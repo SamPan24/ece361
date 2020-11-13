@@ -107,23 +107,112 @@ int main()
                         break;
                     } else if(strcmp(word , "/joinsession") == 0){
                         c = Join;
+                        // send/receive packets
+                        struct Message* sending = (Message *)malloc(sizeof(Message));
 
+                        strcpy (sending->data, word);
+                        
+                        sending->size = strlen(sending->data);
+                        sending->type = JOIN;
+                        char* sending_string = packet_to_string(sending);
+                        
+                        write(sockfd, sending_string, strlen(sending_string));
+                        
+                        // wait for lo_ack or lo_nack
+                        char buff[MAX];
+                        bzero(buff, sizeof(buff)); 
+                        read(sockfd, buff, sizeof(buff));
+
+                        struct Message* received = string_to_packet(buff);
+                        if (received->type == JN_ACK) {
+                            printf ("Joined session: %d\n", word);
+                        } 
+                        else if (received->type == JN_NAK) {
+                            printf ("Join failed: session %d does not exist\n", word);
+                        }
                         // handle later
+                        break;
                     } else if(strcmp(word , "/leavesession") == 0){
                         c = Leave;
-
+                        // send packets
+                        struct Message* sending = (Message *)malloc(sizeof(Message));
+                        sending->size = 0;
+                        sending->type = LEAVE_SESS;
+                        
+                        char* sending_string = packet_to_string(sending);
+                        
+                        write(sockfd, sending_string, strlen(sending_string));
                         // handle
-
+                        printf("left current session\n");
                         // next command
                         break;
                     } else if(strcmp(word , "/createsession") == 0){
                         c = Create;
+                        // send/receive packets
+                        struct Message* sending = (Message *)malloc(sizeof(Message));
 
+                        strcpy (sending->data, word);
+                        
+                        sending->size = strlen(sending->data);
+                        sending->type = NEW_SESS;
+                        char* sending_string = packet_to_string(sending);
+                        
+                        write(sockfd, sending_string, strlen(sending_string));
+                        
+                        // wait for lo_ack or lo_nack
+                        char buff[MAX];
+                        bzero(buff, sizeof(buff)); 
+                        read(sockfd, buff, sizeof(buff));
+
+                        struct Message* received = string_to_packet(buff);
+                        if (received->type == NS_ACK) { 
+                            printf ("new session created\n");
+                            printf ("session ID: %d\n", word);
+                        } 
+                        
+                        break; 
                         // handle later
                     } else if(strcmp(word , "/list\n") == 0){
                         c = List;
 
-                        // handle
+                        struct Message* sending = (Message *)malloc(sizeof(Message));
+
+                        sending->size = 0;
+
+                        sending->type = QUERY;
+                        char* sending_string = packet_to_string(sending);
+                        write(sockfd, sending_string, strlen(sending_string));
+                        // wait for lo_ack or lo_nack
+                        char buff[MAX];
+                        bzero(buff, sizeof(buff)); 
+                        read(sockfd, buff, sizeof(buff));
+
+                        struct Message* received = string_to_packet(buff);
+                        if (received->type == QU_ACK) { 
+                            //print out the list of connections
+                            char *list;
+                            strcpy(list, received->data); 
+
+                            char* token = strtok(list, " "); 
+                        
+                            // Keep printing tokens while one of the 
+                            // delimiters present in str[]. 
+                            int check = 0;
+                            while (token != NULL) { 
+                                if (check%2 == 0){
+                                    printf("user:   %s\n", token); 
+                                    check++;
+                                    token = strtok(NULL, " ");
+                                }
+                                else{
+                                    printf("session:   %s\n", token); 
+                                    check++;
+                                    token = strtok(NULL, " ");
+                                }
+                            }
+                        } 
+
+                        
 
                         // next command
                         break;
@@ -131,6 +220,17 @@ int main()
                         c = Quit;
 
                         // handle
+                        if (loged_in == true){
+                            struct Message* sending = (Message *)malloc(sizeof(Message));
+                            strcpy (sending->source, username);
+                            sending->size = 0;
+
+                            sending->type = LOGOUT;
+                            char* sending_string = packet_to_string(sending);
+                            write(sockfd, sending_string, strlen(sending_string)); 
+                            loged_in = false;
+                        }
+
                         quit = true;
                         
                         // next command
