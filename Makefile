@@ -3,7 +3,7 @@ Lab4 = server client
 Obj = server.o client.o message.o table.o
 all: ${Lab4}
 server: server.o message.o table.o
-	gcc server.o message.o table.o -g -o server
+	gcc server.o message.o table.o -pthread -g -o server
 client: client.o message.o table.o
 	gcc client.o message.o table.o -g -o client
 server.o: server.c

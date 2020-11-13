@@ -13,9 +13,16 @@
 
 #ifndef HASH_TABLE_H
 #define HASH_TABLE_H
+
+typedef struct UserData {
+    int connfd;
+    pthread_t p;
+    
+} UserData;
+
 struct item {
     char * username;
-    int connfd;
+    UserData * data;
 };
 
 typedef struct item item;
@@ -38,7 +45,7 @@ typedef struct HashTable {
 
 // hash table functions
 struct HashTable * hash_table_init(int s);
-_Bool insert_item(char * word, int connfd, struct HashTable * table);
+_Bool insert_item(char * word, UserData * d, struct HashTable * table);
 
 void print_table(struct HashTable *wc);
 void hash_table_destroy(struct HashTable *wc);

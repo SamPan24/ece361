@@ -61,6 +61,7 @@ int main()
     
     _Bool quit = false;
     _Bool loged_in = false;
+    char * username = NULL;
     while(!quit){
         Command c;
         char * command = (char *)malloc(50);
@@ -188,9 +189,16 @@ int main()
         //  Only Login
         
         if (text){
-            if(loged_in)
-                write(sockfd, command, sizeof(command)); 
-            else {
+            if(loged_in){
+                struct Message* sending = (Message *)malloc(sizeof(Message));
+                strncpy (sending->data, command, strlen(command) - 1);
+                strcpy (sending->source, username);
+                sending->size = strlen(sending->data);
+                
+                sending->type = MESSAGE;
+                char* sending_string = packet_to_string(sending);
+                write(sockfd, sending_string, strlen(sending_string)); 
+            }else {
                 printf("Login first!\n");
                 break;
             }
@@ -232,6 +240,8 @@ int main()
             struct Message* received = string_to_packet(buff);
             if (received->type == LO_ACK) { 
                 loged_in = true; 
+                username = login_args[0];
+                // Dont delete login_args 0
                 continue; 
             } 
             else {

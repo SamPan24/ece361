@@ -11,6 +11,7 @@
 #include <sys/socket.h> 
 #include <sys/types.h>
 #include <stdbool.h>
+#include <pthread.h>
 
 #include "message.h" 
 #include "hash_table.h"
@@ -20,8 +21,13 @@
 
 char * authenticate(int connfd);
 _Bool checkDB(Message * m);
+void * newUserHandler(void * data);
 
-// Driver function 
+
+//Prepare Global Login DB
+HashTable * loginDB = NULL;
+    
+
 int main(int argc, char *argv[]) 
 { 
     if(argc != 2){
@@ -53,13 +59,11 @@ int main(int argc, char *argv[])
     if ( bind(sockfd, (const struct sockaddr *)&serverAddr,  
             sizeof(serverAddr)) < 0 ) 
     { 
-        printf("unable to bind "); 
+        printf("unable to bind!\n"); 
         exit(ERROR); 
     }
     
-    // prepare login db
-    HashTable * loginDB = hash_table_init(50);
-    
+    loginDB = hash_table_init(50);
     // start listening
     while(true)
     {    
@@ -80,21 +84,48 @@ int main(int argc, char *argv[])
         } 
         else
                 printf("server acccept the client...\n"); 
-
-
-        // Function for chatting between client and server 
-        char * username = authenticate(connfd);
-        if(username != NULL){
-            // valid user
-            insert_item(username, connfd, loginDB);
-        } 
-        else{
-            printf("Failed Login attempt!\n");
-        }
+        
+        UserData * data = (UserData *)malloc(sizeof(UserData));
+        data->connfd = connfd;
+        pthread_create( &(data->p), NULL, newUserHandler, (void *)data);
+        
+        
     }
     // After chatting close the socket 
     close(sockfd); 
 } 
+
+
+void handleUserRequests(UserData * data){
+    while(1){
+        char * buf = (char *)malloc(MAX);
+        int ret = read(data->connfd, buf, MAX);
+        Message * m = string_to_packet(buf);
+        if(m->type == MESSAGE){
+            printf("User %s Sent : %s\n", m->source, m->data);
+        }else {
+            printf("Not Implemented!");
+        }
+    }
+}
+
+
+// All new users begin here
+void * newUserHandler(void * data){
+    UserData * d = (UserData *)data;
+    char * username = authenticate(d->connfd);
+    if(username != NULL){
+        // valid user
+        
+        insert_item(username, d, loginDB);
+        
+        handleUserRequests(d);
+    } 
+    else{
+        printf("Failed Login attempt!\n");
+    }
+    return data;
+}
 
 char * authenticate(int connfd)
 {

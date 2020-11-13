@@ -48,13 +48,13 @@ struct HashTable * hash_table_init(int s){
     return table;
 }
 
-_Bool insert_item(char * word, int connfd, struct HashTable * table){
+_Bool insert_item(char * word, UserData * d, struct HashTable * table){
 
     // create an item
     item * element = (item *)malloc(sizeof(item));
     element->username = (char *)malloc( (strlen(word) + 1) * sizeof(char));
     strcpy(element->username , word );
-    element->connfd = connfd;
+    element->data = d;
     
     // insert
     int index = hash(word) ;
@@ -97,7 +97,7 @@ void hash_table_destroy(struct HashTable *wc)
 void print_list(CollisionList* list){
     CollisionList * temp = list;
     while(temp != NULL){
-        printf("%s:%d\n" , temp->element->username , temp->element->connfd);
+        printf("%s:%d\n" , temp->element->username , temp->element->data->connfd);
         temp = temp->next;
     }
 }
@@ -168,6 +168,7 @@ void free_list(CollisionList* list) {
         prev = list;
         list = list->next;
         free(prev->element->username);
+        free(prev->element->data);
         free(prev->element);
         free(prev);
     }
