@@ -19,7 +19,7 @@
 #define MAX 1024 
 #define ERROR -1
 
-char * authenticate(int connfd);
+char * authenticate(UserData * d);
 _Bool checkDB(Message * m);
 void * newUserHandler(void * data);
 
@@ -99,13 +99,36 @@ int main(int argc, char *argv[])
 void handleUserRequests(UserData * data){
     while(1){
         char * buf = (char *)malloc(MAX);
+        bzero(buf, MAX);
         int ret = read(data->connfd, buf, MAX);
+        if(ret <= 0)
+            continue;
         Message * m = string_to_packet(buf);
         if(m->type == MESSAGE){
             printf("User %s Sent : %s\n", m->source, m->data);
-        }else {
-            printf("Not Implemented!");
+        } else if(m->type == LOGIN){
+            printf("Double Login attempt!\n");
+            struct Message* nack = (Message *)malloc(sizeof(Message));
+            nack->size = 0;
+            nack->type = LO_NAK;
+            char* sending_string = packet_to_string(nack);
+            write(data->connfd, sending_string, sizeof(sending_string));
+            free(sending_string);
+            free(nack);
+        } else if(m->type == LOGOUT){
+            printf("User %s Logged out.\n" , m->source);
+            
+            // remove from table
+            remove_item(m->source, loginDB);
+            
+            printf("Now Logged In : \n");
+            print_table(loginDB);
         }
+        else {
+            
+            printf("Not Implemented! %d %d\n", m->type, ret);
+        }
+        free(buf);
     }
 }
 
@@ -113,11 +136,12 @@ void handleUserRequests(UserData * data){
 // All new users begin here
 void * newUserHandler(void * data){
     UserData * d = (UserData *)data;
-    char * username = authenticate(d->connfd);
+    char * username = authenticate(d);
     if(username != NULL){
         // valid user
         
-        insert_item(username, d, loginDB);
+        printf("Now Logged In : \n");
+        print_table(loginDB);
         
         handleUserRequests(d);
     } 
@@ -127,8 +151,9 @@ void * newUserHandler(void * data){
     return data;
 }
 
-char * authenticate(int connfd)
+char * authenticate(UserData *d)
 {
+    int connfd = d->connfd;
     char * buf  = (char *)malloc(sizeof(char) * 1024); 
     
     // receive from client
@@ -144,7 +169,17 @@ char * authenticate(int connfd)
     
     Message * m = string_to_packet(buf);
 
-    if(checkDB(m)){
+    _Bool done = false;
+    _Bool isValidUser = checkDB(m);
+    // check if already loged in
+    if(isValidUser){
+        done = insert_item(m->source, d, loginDB);
+        if(!done){
+            printf("User already logged in!\n");
+        }
+    }
+    if(done){
+        
         // send Ack
         struct Message* ack = (Message *)malloc(sizeof(Message));
         ack->size = 0;

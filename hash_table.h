@@ -51,5 +51,8 @@ void print_table(struct HashTable *wc);
 void hash_table_destroy(struct HashTable *wc);
 
 
+_Bool remove_item(char * word, HashTable * table);
+UserData * find_item(char * word, HashTable * table);
+
 #endif /* HASH_TABLE_H */
 

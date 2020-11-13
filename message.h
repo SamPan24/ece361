@@ -22,6 +22,7 @@ typedef enum MessageType {
     LOGIN ,
     LO_ACK ,
     LO_NAK ,
+    LOGOUT ,
     EXIT ,
     JOIN ,
     JN_ACK ,

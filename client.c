@@ -90,12 +90,19 @@ int main()
                         c = Login;
 
                         // handle later
-                    } else if(strcmp(word , "/logout") == 0){
+                    } else if(strcmp(word , "/logout\n") == 0){
                         c = Logout;
 
                         // handle
                         loged_in = false;
                         
+                        struct Message* sending = (Message *)malloc(sizeof(Message));
+                        strcpy (sending->source, username);
+                        sending->size = 0;
+
+                        sending->type = LOGOUT;
+                        char* sending_string = packet_to_string(sending);
+                        write(sockfd, sending_string, strlen(sending_string)); 
                         // next command
                         break;
                     } else if(strcmp(word , "/joinsession") == 0){
@@ -113,14 +120,14 @@ int main()
                         c = Create;
 
                         // handle later
-                    } else if(strcmp(word , "/list") == 0){
+                    } else if(strcmp(word , "/list\n") == 0){
                         c = List;
 
                         // handle
 
                         // next command
                         break;
-                    } else if(strcmp(word , "/quit") == 0){
+                    } else if(strcmp(word , "/quit\n") == 0){
                         c = Quit;
 
                         // handle
@@ -129,7 +136,7 @@ int main()
                         // next command
                         break;
                     } else {
-                        printf("Invalid Command!\n");
+                        printf("Invalid Command! WORD: %s\n", word);
                     }
                 }
                 else {

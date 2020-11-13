@@ -16,6 +16,8 @@ void free_list(CollisionList* list);
 CollisionList* create_list_item ();
 CollisionList* insert_list(CollisionList* list, item* element);
 void print_list(CollisionList* list);
+UserData * find_list(CollisionList* list, char * word);
+CollisionList* remove_list(CollisionList* list, char * word, _Bool * removed);
 
 // Hash key Function
 long hash( char *str);
@@ -71,6 +73,22 @@ _Bool insert_item(char * word, UserData * d, struct HashTable * table){
     return true;
 }
 
+_Bool remove_item(char * word, HashTable * table){
+    int index = hash(word);
+    index = (index & 0x7fffffff) % table->size;
+    
+    _Bool removed;
+    table->lists[index] = remove_list(table->lists[index], word, &removed);
+    return removed;
+}
+
+UserData * find_item(char * word, HashTable * table){
+    int index = hash(word);
+    index = (index & 0x7fffffff) % table->size;
+    
+    return find_list(table->lists[index], word);
+}
+
 void print_table(struct HashTable *wc)
 {
     for(int i = 0 ; i < wc->size; i++){
@@ -107,6 +125,69 @@ CollisionList* create_list_item () {
     CollisionList* list = (CollisionList*) malloc (sizeof(CollisionList));
     return list;
 }
+
+CollisionList* remove_list(CollisionList* list, char * word, _Bool * removed){
+    *removed = false;
+    if(!list){
+        // empty list, can't remove
+        return NULL;
+    }
+    CollisionList* prev = NULL;
+    CollisionList* temp = list;
+    
+    do{
+        // check if item if found already
+        if( strcmp(temp->element->username , word) == 0 ){
+            // found
+            // Same word exists, Remove
+            if(prev == NULL){
+                // first element
+                list = temp->next;
+            }
+            else{
+                prev->next = temp->next;
+            }
+            free(temp->element->username);
+            free(temp->element->data);
+            free(temp->element);
+            printf("Removed : %s\n" , word);
+            *removed = true;
+            return list;
+        }
+        // if not traverse through the list
+        prev = temp;
+        temp = temp->next;
+    }while(temp != NULL);
+    
+    // temp points to last element in the list, element was not found
+    return list;
+}
+
+UserData * find_list(CollisionList* list, char * word){
+    if(!list){
+        // empty list, can't find
+        return NULL;
+    }
+    CollisionList* prev = NULL;
+    CollisionList* temp = list;
+    
+    do{
+        // check if item if found already
+        if( strcmp(temp->element->username , word) == 0 ){
+            // found
+            // Same word exists
+            
+            return temp->element->data;
+        }
+        // if not traverse through the list
+        prev = temp;
+        temp = temp->next;
+    }while(temp != NULL);
+    
+    // Not found
+    return NULL;
+}
+
 
 CollisionList* insert_list(CollisionList* list, item* element) {
     // Check if list is empty
