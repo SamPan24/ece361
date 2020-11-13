@@ -150,7 +150,6 @@ int main()
                         if(word_count <= 5){
                             login_args[word_count -1] = (char *)malloc(50);
                             strcpy(login_args[word_count -1] , word);
-                            printf("\n%s\n" , word);
                         }else{
                             printf("Invalid Arguments\n");
                         }
@@ -197,8 +196,7 @@ int main()
             }
         }
         else if(c == Login){
-//            assert(word_count == 6);
-            printf("Count : %d\n" , word_count);
+            assert(word_count == 5);
             bzero(&servaddr, sizeof(servaddr)); 
 
             // assign IP, PORT 
@@ -214,11 +212,6 @@ int main()
             else
                     printf("connected to the server..\n"); 
             
-            printf("Login Args : \n");
-            
-            for (int i = 0 ; i  < 4; i++)
-                printf("%s\n", login_args[i]);
-            
             // send/receive packets
             struct Message* sending = (Message *)malloc(sizeof(Message));
 
@@ -227,11 +220,9 @@ int main()
             
             sending->size = strlen(sending->data);
             sending->type = LOGIN;
-            printf("DATA : %s\n", sending->data);
             char* sending_string = packet_to_string(sending);
             
-            printf("Sending String :: %s", sending_string);
-            write(sockfd, sending_string, sizeof(sending_string));
+            write(sockfd, sending_string, strlen(sending_string));
             
             // wait for lo_ack or lo_nack
             char buff[MAX];
@@ -253,11 +244,6 @@ int main()
         free(command);
         free(word_array);
     }
-//    
-//    
-//    
-//    // function for chat 
-//    func(sockfd); 
 
     // close the socket 
     close(sockfd); 
