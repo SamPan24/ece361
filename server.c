@@ -12,7 +12,7 @@
 #include <sys/types.h>
 #include <stdbool.h>
 #include <pthread.h>
-
+#include <assert.h>
 #include "message.h" 
 #include "hash_table.h"
 
@@ -24,8 +24,9 @@ _Bool checkDB(Message * m);
 void * newUserHandler(void * data);
 
 
-//Prepare Global Login DB
+//Prepare Global Login,Session DB
 HashTable * loginDB = NULL;
+HashTable * sessionDB = NULL;
     
 
 int main(int argc, char *argv[]) 
@@ -63,7 +64,10 @@ int main(int argc, char *argv[])
         exit(ERROR); 
     }
     
+    // Max users 50, Sessions 10
     loginDB = hash_table_init(50);
+    sessionDB = hash_table_init(10);
+    
     // start listening
     while(true)
     {    
@@ -95,6 +99,15 @@ int main(int argc, char *argv[])
     close(sockfd); 
 } 
 
+void empty_message(int connfd, MessageType m){
+    struct Message* mess = (Message *)malloc(sizeof(Message));
+    mess->size = 0;
+    mess->type = m;
+    char* sending_string = packet_to_string(mess);
+    write(connfd, sending_string, strlen(sending_string));
+    free(sending_string);
+    free(mess);
+}
 
 void handleUserRequests(UserData * data){
     while(1){
@@ -106,16 +119,12 @@ void handleUserRequests(UserData * data){
         Message * m = string_to_packet(buf);
         if(m->type == MESSAGE){
             printf("User %s Sent : %s\n", m->source, m->data);
-        } else if(m->type == LOGIN){
+        } 
+        else if(m->type == LOGIN){
             printf("Double Login attempt!\n");
-            struct Message* nack = (Message *)malloc(sizeof(Message));
-            nack->size = 0;
-            nack->type = LO_NAK;
-            char* sending_string = packet_to_string(nack);
-            write(data->connfd, sending_string, sizeof(sending_string));
-            free(sending_string);
-            free(nack);
-        } else if(m->type == LOGOUT){
+            empty_message(data->connfd, LO_NAK);
+        } 
+        else if(m->type == LOGOUT){
             printf("User %s Logged out.\n" , m->source);
             
             // remove from table
@@ -123,6 +132,94 @@ void handleUserRequests(UserData * data){
             
             printf("Now Logged In : \n");
             print_table(loginDB);
+        } 
+        else if(m->type == QUERY){
+            
+            
+            
+            // Send QU_ACK
+            empty_message(data->connfd, QU_ACK);
+            
+        }
+        else if(m->type == NEW_SESS){
+            SessionData * sessData = (SessionData *)malloc(sizeof(SessionData));
+            // No users at first
+            sessData->connected_users = NULL;
+            _Bool done = insert_item(m->data, sessData,sessionDB);
+            
+            if(!done){
+                printf("Session Creation Failed!\n");
+            }
+            empty_message(data->connfd, NS_ACK);
+            
+        } 
+        else if(m->type == JOIN){
+            SessionData * sessData = find_item(m->data, sessionDB);
+            if(sessData == NULL){
+                // session doesn't exist, send nack
+                empty_message(data->connfd, JN_NAK);
+            }
+            else{
+                // exists, Join
+                if(sessData->connected_users == NULL){
+                    // No users
+                    sessData->connected_users = (UserList *)malloc(sizeof(UserList));
+                    sessData->connected_users->next = NULL;
+                    strcpy(sessData->connected_users->username , m->source);
+                }
+                else{
+                    UserList * head = sessData->connected_users;
+                    
+                    while(head->next != NULL){
+                        head = head->next;
+                    }
+                    
+                    // Head points to last element now
+                    head->next = (UserList *)malloc(sizeof(UserList));
+                    head->next->next = NULL;
+                    strcpy(head->next->username, m->source);
+                }
+                
+                // set user session
+                strcpy(data->sessid, m->data);
+                
+                // Send Ack
+                empty_message(data->connfd, JN_ACK);
+            }
+        }
+        else if(m->type == LEAVE_SESS){
+            if(strcmp(data->sessid, "") == 0){
+                // Not in session
+            }
+            else{
+                SessionData * sessData = find_item(data->sessid, sessionDB);
+                
+                assert(sessData != NULL);
+                
+                UserList * head = sessData->connected_users;
+                    
+                assert(head != NULL);
+                
+                UserList * prev = NULL;
+                while(head != NULL){
+                    if(strcmp(head->username, m->source) == 0){
+                        // found element, remove
+                        if(prev == NULL){
+                            // first element
+                            sessData->connected_users = NULL;
+                        }
+                        else {
+                            prev->next = head->next;
+                        }
+                        free(head->username);
+                        free(head);
+                        break;
+                    }
+                    prev = head;
+                    head = head->next;
+                }
+                strcpy(data->sessid, "");
+            }
         }
         else {
             

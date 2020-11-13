@@ -16,7 +16,7 @@ void free_list(CollisionList* list);
 CollisionList* create_list_item ();
 CollisionList* insert_list(CollisionList* list, item* element);
 void print_list(CollisionList* list);
-UserData * find_list(CollisionList* list, char * word);
+void * find_list(CollisionList* list, char * word);
 CollisionList* remove_list(CollisionList* list, char * word, _Bool * removed);
 
 // Hash key Function
@@ -50,12 +50,12 @@ struct HashTable * hash_table_init(int s){
     return table;
 }
 
-_Bool insert_item(char * word, UserData * d, struct HashTable * table){
+_Bool insert_item(char * word, void * d, struct HashTable * table){
 
     // create an item
     item * element = (item *)malloc(sizeof(item));
-    element->username = (char *)malloc( (strlen(word) + 1) * sizeof(char));
-    strcpy(element->username , word );
+    element->key = (char *)malloc( (strlen(word) + 1) * sizeof(char));
+    strcpy(element->key , word );
     element->data = d;
     
     // insert
@@ -82,7 +82,7 @@ _Bool remove_item(char * word, HashTable * table){
     return removed;
 }
 
-UserData * find_item(char * word, HashTable * table){
+void * find_item(char * word, HashTable * table){
     int index = hash(word);
     index = (index & 0x7fffffff) % table->size;
     
@@ -115,7 +115,15 @@ void hash_table_destroy(struct HashTable *wc)
 void print_list(CollisionList* list){
     CollisionList * temp = list;
     while(temp != NULL){
-        printf("%s:%d\n" , temp->element->username , temp->element->data->connfd);
+        printf("%s:%d\n" , temp->element->key , ((UserData *)temp->element->data)->connfd);
+        temp = temp->next;
+    }
+}
+
+void print_list_session(CollisionList* list){
+    CollisionList * temp = list;
+    while(temp != NULL){
+        printf("%s:%d\n" , temp->element->key , ((UserData *)temp->element->data)->connfd);
         temp = temp->next;
     }
 }
@@ -137,7 +145,7 @@ CollisionList* remove_list(CollisionList* list, char * word, _Bool * removed){
     
     do{
         // check if item if found already
-        if( strcmp(temp->element->username , word) == 0 ){
+        if( strcmp(temp->element->key , word) == 0 ){
             // found
             // Same word exists, Remove
             if(prev == NULL){
@@ -147,7 +155,7 @@ CollisionList* remove_list(CollisionList* list, char * word, _Bool * removed){
             else{
                 prev->next = temp->next;
             }
-            free(temp->element->username);
+            free(temp->element->key);
             free(temp->element->data);
             free(temp->element);
             printf("Removed : %s\n" , word);
@@ -163,7 +171,7 @@ CollisionList* remove_list(CollisionList* list, char * word, _Bool * removed){
     return list;
 }
 
-UserData * find_list(CollisionList* list, char * word){
+void * find_list(CollisionList* list, char * word){
     if(!list){
         // empty list, can't find
         return NULL;
@@ -173,7 +181,7 @@ UserData * find_list(CollisionList* list, char * word){
     
     do{
         // check if item if found already
-        if( strcmp(temp->element->username , word) == 0 ){
+        if( strcmp(temp->element->key , word) == 0 ){
             // found
             // Same word exists
             
@@ -205,7 +213,7 @@ CollisionList* insert_list(CollisionList* list, item* element) {
     
     do{
         // check if item if found already
-        if( strcmp(prev->element->username , element->username) == 0 ){
+        if( strcmp(prev->element->key , element->key) == 0 ){
             // found
             // Same word exists, no collision
             // Same user already logged in
@@ -248,7 +256,7 @@ void free_list(CollisionList* list) {
     while (list) {
         prev = list;
         list = list->next;
-        free(prev->element->username);
+        free(prev->element->key);
         free(prev->element->data);
         free(prev->element);
         free(prev);

@@ -17,12 +17,24 @@
 typedef struct UserData {
     int connfd;
     pthread_t p;
-    
+    char sessid[20];
 } UserData;
 
-struct item {
+typedef struct UserList {
     char * username;
-    UserData * data;
+    struct UserList * next;
+} UserList;
+
+typedef struct SessionData {
+    UserList * connected_users;
+    
+    // other info
+} SessionData;
+
+
+struct item {
+    char * key;
+    void * data;
 };
 
 typedef struct item item;
@@ -45,14 +57,14 @@ typedef struct HashTable {
 
 // hash table functions
 struct HashTable * hash_table_init(int s);
-_Bool insert_item(char * word, UserData * d, struct HashTable * table);
+_Bool insert_item(char * word, void * d, struct HashTable * table);
 
 void print_table(struct HashTable *wc);
 void hash_table_destroy(struct HashTable *wc);
 
 
 _Bool remove_item(char * word, HashTable * table);
-UserData * find_item(char * word, HashTable * table);
+void * find_item(char * word, HashTable * table);
 
 #endif /* HASH_TABLE_H */
 
