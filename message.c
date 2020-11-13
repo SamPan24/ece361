@@ -4,7 +4,8 @@
  * and open the template in the editor.
  */
 #include <string.h>
-
+#include <stdlib.h>
+#include <stdio.h>
 #include "message.h"
 
 char * packet_to_string(Message * p){
@@ -17,7 +18,7 @@ char * packet_to_string(Message * p){
 }
 
 Message * string_to_packet(char * str){
-    Message * newP  = (Message *)malloc(sizeof(packet));
+    Message * newP  = (Message *)malloc(sizeof(Message));
     char * buf= (char *)malloc(50);
     sscanf(str , "%d:%d:%s", &newP->type , &newP->size, buf);
     strncpy(newP->source , buf, strlen(buf) - newP->size );
