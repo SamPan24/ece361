@@ -9,38 +9,17 @@
 #include <stdlib.h> 
 #include <string.h> 
 #include <sys/socket.h> 
-#include <sys/types.h> 
-#define MAX 80 
+#include <sys/types.h>
+#include <stdbool.h>
+
+#include "message.h" 
+#include "hash_table.h"
+
+#define MAX 1024 
 #define ERROR -1
-// Function designed for chat between client and server. 
-void func(int sockfd) 
-{ 
-	char buff[MAX]; 
-	int n; 
-	// infinite loop for chat 
-	for (;;) { 
-		bzero(buff, MAX); 
 
-		// read the message from client and copy it in buffer 
-		read(sockfd, buff, sizeof(buff)); 
-		// print buffer which contains the client contents 
-		printf("From client: %s\t To client : ", buff); 
-		bzero(buff, MAX); 
-		n = 0; 
-		// copy server message in the buffer 
-		while ((buff[n++] = getchar()) != '\n') 
-			; 
-
-		// and send that buffer to client 
-		write(sockfd, buff, sizeof(buff)); 
-
-		// if msg contains "Exit" then server exit and chat ended. 
-		if (strncmp("exit", buff, 4) == 0) { 
-			printf("Server Exit...\n"); 
-			break; 
-		} 
-	} 
-} 
+char * authenticate(int connfd);
+_Bool checkDB(Message * m);
 
 // Driver function 
 int main(int argc, char *argv[]) 
@@ -77,32 +56,120 @@ int main(int argc, char *argv[])
         printf("unable to bind "); 
         exit(ERROR); 
     }
-	
-    // Now server is ready to listen and verification 
-    if ((listen(sockfd, 5)) != 0) { 
-            printf("Listen failed...\n"); 
-            exit(0); 
-    } 
-    else
-            printf("Server listening..\n"); 
-    int len = sizeof(clientAddr); 
+    
+    // prepare login db
+    HashTable * loginDB = hash_table_init(50);
+    
+    // start listening
+    while(true)
+    {    
+        // Now server is ready to listen and verification 
+        if ((listen(sockfd, 5)) != 0) { 
+                printf("Listen failed...\n"); 
+                exit(0); 
+        } 
+        else
+                printf("Server listening..\n"); 
+        int len = sizeof(clientAddr); 
 
-    // Accept the data packet from client and verification 
-    int connfd = accept(sockfd, ( struct sockaddr *)&clientAddr, &len); 
-    if (connfd < 0) { 
-            printf("server acccept failed...\n"); 
-            exit(0); 
-    } 
-    else
-            printf("server acccept the client...\n"); 
+        // Accept the data packet from client and verification 
+        int connfd = accept(sockfd, ( struct sockaddr *)&clientAddr, &len); 
+        if (connfd < 0) { 
+                printf("server acccept failed...\n"); 
+                exit(0); 
+        } 
+        else
+                printf("server acccept the client...\n"); 
 
-    // Function for chatting between client and server 
-    func(connfd); 
 
+        // Function for chatting between client and server 
+        char * username = authenticate(connfd);
+        if(username != NULL){
+            // valid user
+            insert_item(username, connfd, loginDB);
+        } 
+        else{
+            printf("Failed Login attempt!\n");
+        }
+    }
     // After chatting close the socket 
     close(sockfd); 
 } 
 
+char * authenticate(int connfd)
+{
+    char * buf  = (char *)malloc(MAX); 
+    int n; 
 
+    bzero(buf, MAX); 
 
+    // receive from client
+    read(connfd, buf, sizeof(buf)); 
 
+    Message * m = string_to_packet(buf);
+
+    if(checkDB(m)){
+        // send Ack
+        struct Message* ack;
+        ack->size = 0;
+        ack->type = LO_ACK;
+        char* sending_string = packet_to_string(ack);
+        write(connfd, sending_string, sizeof(sending_string));
+        free(buf);
+        buf = (char *)malloc(MAX_NAME);
+        strcpy(buf, m->source);
+        return buf;
+    }
+    else{
+        // send no ack
+        struct Message* nack;
+        nack->size = 0;
+        nack->type = LO_NAK;
+        char* sending_string = packet_to_string(nack);
+        write(connfd, sending_string, sizeof(sending_string));
+        free(buf);
+        return NULL;
+    }
+    
+    free(buf);
+    return NULL;
+}
+
+_Bool checkDB(Message * m){
+    // Declare the file pointer 
+    FILE *filePointer ; 
+    filePointer = fopen("UserDB", "r") ; 
+      
+    if ( filePointer == NULL ) 
+    { 
+        printf( "No User Database found!(Not accessible)" ) ; 
+        return false;
+    } 
+    char * username = (char *)malloc(MAX_NAME);
+    char * password = (char *)malloc(MAX_NAME);
+    printf("searching...\n"); 
+    while (true){
+
+        if(fscanf(filePointer, "%s %s\n", username, password) == EOF)
+            break;
+
+        if(strcmp(username, m->source) == 0){
+            // User found
+            printf("user found");
+            if(strcmp(password, m->data) == 0){
+                printf("authenticated!");
+                fclose(filePointer);
+                return true;
+            }
+            else{
+                // wrong password
+                fclose(filePointer);
+                return false;
+            }
+        }
+    }
+    // Not found
+    fclose(filePointer) ; 
+    return false;      
+    
+}
