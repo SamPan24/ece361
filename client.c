@@ -64,7 +64,7 @@ int main()
     while(!quit){
         Command c;
         char * command = (char *)malloc(50);
-        char login_args[20][4];
+        char  * login_args [4];
         size_t len = 50;
         printf(">");
         getline(&command, &len, stdin);
@@ -147,9 +147,11 @@ int main()
                 else{
                     // handle command argument
                     if(c == Login){
-                        if(word_count <= 5)
+                        if(word_count <= 5){
+                            login_args[word_count -1] = (char *)malloc(50);
                             strcpy(login_args[word_count -1] , word);
-                        else{
+                            printf("\n%s\n" , word);
+                        }else{
                             printf("Invalid Arguments\n");
                         }
                     }
@@ -212,14 +214,23 @@ int main()
             else
                     printf("connected to the server..\n"); 
             
+            printf("Login Args : \n");
+            
+            for (int i = 0 ; i  < 4; i++)
+                printf("%s\n", login_args[i]);
+            
             // send/receive packets
-            struct Message* sending;
+            struct Message* sending = (Message *)malloc(sizeof(Message));
 
-            strncpy (sending->data, login_args[1], MAX_DATA);
-            strncpy (sending->source, login_args[0], MAX_NAME);
+            strcpy (sending->data, login_args[1]);
+            strcpy (sending->source, login_args[0]);
+            
             sending->size = strlen(sending->data);
             sending->type = LOGIN;
+            printf("DATA : %s\n", sending->data);
             char* sending_string = packet_to_string(sending);
+            
+            printf("Sending String :: %s", sending_string);
             write(sockfd, sending_string, sizeof(sending_string));
             
             // wait for lo_ack or lo_nack

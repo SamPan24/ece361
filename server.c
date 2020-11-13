@@ -98,19 +98,30 @@ int main(int argc, char *argv[])
 
 char * authenticate(int connfd)
 {
-    char * buf  = (char *)malloc(MAX); 
+    char * buf  = (char *)malloc(sizeof(char) * 1024); 
     int n; 
 
-    bzero(buf, MAX); 
+    //bzero(buf, MAX); 
 
     // receive from client
-    read(connfd, buf, sizeof(buf)); 
-
+    int total = 0;
+//    while(1){
+//        int ret = read(connfd, buf + total, 1024); 
+//        total += ret;
+//        if(buf[total] == '\0')
+//            break;
+//    }
+    total = read(connfd, buf, 1024);
+    write(STDOUT_FILENO, buf, 20);
+    printf("Total Read : %d\n", total);
+    
+    printf(buf);
     Message * m = string_to_packet(buf);
 
     if(checkDB(m)){
         // send Ack
-        struct Message* ack;
+        printf("h1\n");
+        struct Message* ack = (Message *)malloc(sizeof(Message));
         ack->size = 0;
         ack->type = LO_ACK;
         char* sending_string = packet_to_string(ack);
@@ -122,7 +133,9 @@ char * authenticate(int connfd)
     }
     else{
         // send no ack
-        struct Message* nack;
+        
+        printf("h2\n");
+        struct Message* nack = (Message *)malloc(sizeof(Message));
         nack->size = 0;
         nack->type = LO_NAK;
         char* sending_string = packet_to_string(nack);
@@ -148,9 +161,14 @@ _Bool checkDB(Message * m){
     char * username = (char *)malloc(MAX_NAME);
     char * password = (char *)malloc(MAX_NAME);
     printf("searching...\n"); 
+    printf("For %s:%s\n" , m->source, m->data);
     while (true){
-
-        if(fscanf(filePointer, "%s %s\n", username, password) == EOF)
+        
+        int res = fscanf(filePointer, "%s %s\n", username, password); 
+        
+        printf("Found %s:%s\n" , username, password);
+        
+        if( res == EOF)
             break;
 
         if(strcmp(username, m->source) == 0){
