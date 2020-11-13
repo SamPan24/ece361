@@ -190,7 +190,7 @@ int main()
             if(loged_in)
                 write(sockfd, command, sizeof(command)); 
             else {
-                printf("Login first!");
+                printf("Login first!\n");
                 break;
             }
         }
@@ -212,8 +212,31 @@ int main()
             else
                     printf("connected to the server..\n"); 
             
-            loged_in = true;
+            // send/receive packets
+            struct Message* sending;
 
+            strncpy (sending->data, login_args[1], MAX_DATA);
+            strncpy (sending->source, login_args[0], MAX_NAME);
+            sending->size = strlen(sending->data);
+            sending->type = LOGIN;
+            char* sending_string = packet_to_string(sending);
+            write(sockfd, sending_string, sizeof(sending_string));
+            
+            // wait for lo_ack or lo_nack
+            char buff[MAX];
+            bzero(buff, sizeof(buff)); 
+            read(sockfd, buff, sizeof(buff));
+
+            struct Message* received = string_to_packet(buff);
+            if (received->type == LO_ACK) { 
+                loged_in = true; 
+                continue; 
+            } 
+            else {
+                loged_in = false;
+                printf ("login failed, try again\n");
+                continue;
+            }
         } 
         // command done
         free(command);

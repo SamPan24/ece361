@@ -14,7 +14,7 @@
 #ifndef MESSAGE_H
 #define MESSAGE_H
 
-#define MAX_NAME 1024
+#define MAX_NAME 50
 #define MAX_DATA 1024
 
 
