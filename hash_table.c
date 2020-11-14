@@ -217,7 +217,6 @@ CollisionList* remove_list(CollisionList* list, char * word, _Bool * removed){
             free(temp->element->key);
             free(temp->element->data);
             free(temp->element);
-            printf("Removed : %s\n" , word);
             *removed = true;
             return list;
         }

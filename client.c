@@ -21,27 +21,6 @@ typedef enum Command {
     List,
     Quit
 } Command;
-//
-//void func(int sockfd) 
-//{ 
-//    char buff[MAX]; 
-//    int n; 
-//    for (;;) { 
-//            bzero(buff, sizeof(buff)); 
-//            printf("Enter the string : "); 
-//            n = 0; 
-//            while ((buff[n++] = getchar()) != '\n') 
-//                    ; 
-//            write(sockfd, buff, sizeof(buff)); 
-//            bzero(buff, sizeof(buff)); 
-//            read(sockfd, buff, sizeof(buff)); 
-//            printf("From Server : %s", buff); 
-//            if ((strncmp(buff, "exit", 4)) == 0) { 
-//                    printf("Client Exit...\n"); 
-//                    break; 
-//            } 
-//    } 
-//} 
 
 int main() 
 {
@@ -92,7 +71,11 @@ int main()
                     }
                     else if(strcmp(word , "/logout\n") == 0){
                         c = Logout;
-
+                        
+                        if(!loged_in){
+                            printf("Not Logged in.\n");
+                            break;
+                        }
                         // handle
                         loged_in = false;
                         
@@ -109,10 +92,19 @@ int main()
                     else if(strcmp(word , "/joinsession") == 0){
                         c = Join;
                         
+                        if(!loged_in){
+                            printf("Not Logged in.\n");
+                            break;
+                        }
                         // handle later
                     } 
                     else if(strcmp(word , "/leavesession\n") == 0){
                         c = Leave;
+                        
+                        if(!loged_in){
+                            printf("Not Logged in.\n");
+                            break;
+                        }
                         // send packets
                         struct Message* sending = (Message *)malloc(sizeof(Message));
                         sending->size = 0;
@@ -131,10 +123,19 @@ int main()
                     else if(strcmp(word , "/createsession") == 0){
                         c = Create;
                         
+                        if(!loged_in){
+                            printf("Not Logged in.\n");
+                            break;
+                        }
                         // handle later
                     } 
                     else if(strcmp(word , "/list\n") == 0){
                         c = List;
+                        
+                        if(!loged_in){
+                            printf("Not Logged in.\n");
+                            break;
+                        }
 
                         struct Message* sending = (Message *)malloc(sizeof(Message));
 
@@ -231,7 +232,10 @@ int main()
                             printf ("Joined session: %s\n", word);
                         } 
                         else if (received->type == JN_NAK) {
-                            printf ("Join failed: session %s does not exist\n", word);
+                            if(strcmp(received->data, "leave_first") == 0)
+                                printf ("Join failed: Leave current session first\n");
+                            else
+                                printf ("Join failed: session %s does not exist\n", word);
                         }
                         }
                         else {

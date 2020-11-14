@@ -43,5 +43,8 @@ typedef struct Message {
 char * packet_to_string(Message * p);
 Message * string_to_packet(char * str);
 
+void text_message(int connfd, MessageType m, char * text);
+void empty_message(int connfd, MessageType m);
+
 #endif /* MESSAGE_H */
 
