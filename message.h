@@ -40,9 +40,15 @@ typedef struct Message {
 } Message;
 
 
+typedef struct MessageList{
+    Message * m;
+    struct MessageList * next;
+} MessageList;
+
 char * packet_to_string(Message * p);
 Message * string_to_packet(char * str);
 
+void text_message_from_source(int connfd, MessageType m, char * text, char * source);
 void text_message(int connfd, MessageType m, char * text);
 void empty_message(int connfd, MessageType m);
 

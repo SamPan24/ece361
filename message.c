@@ -58,3 +58,15 @@ void text_message(int connfd, MessageType m, char * text){
     free(sending_string);
     free(mess);
 }
+
+void text_message_from_source(int connfd, MessageType m, char * text, char * source){
+    struct Message* mess = (Message *)malloc(sizeof(Message));
+    mess->size = strlen(text);
+    mess->type = m;
+    strcpy(mess->source, source);
+    strcpy(mess->data, text);
+    char* sending_string = packet_to_string(mess);
+    write(connfd, sending_string, strlen(sending_string));
+    free(sending_string);
+    free(mess);
+}

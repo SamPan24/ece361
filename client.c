@@ -8,6 +8,7 @@
 #include <netinet/in.h> 
 #include <arpa/inet.h>
 #include <assert.h>
+#include <pthread.h>
 
 #include "message.h"
 #include "hash_table.h"
@@ -22,8 +23,104 @@ typedef enum Command {
     Quit
 } Command;
 
+MessageList * controlList = NULL;
+MessageList * userMessages= NULL;
+
+pthread_mutex_t controlMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t userMutex = PTHREAD_MUTEX_INITIALIZER;
+
+pthread_cond_t conrolCond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t userCond = PTHREAD_COND_INITIALIZER;
+
+void addToMsgList(Message *m , MessageList *l){
+    
+    while(l->next != NULL){
+        l = l->next;
+    }
+    l->next = (MessageList *)malloc(sizeof(MessageList));
+    l->next->m = m;
+    l->next->next = NULL;
+}
+
+Message * popControlList(){
+    
+    pthread_mutex_lock(&controlMutex);
+    while(controlList->next == NULL){
+        // Block
+        pthread_cond_wait(&conrolCond, &controlMutex);
+    }
+    
+    Message * res = controlList->next->m;
+    
+    controlList->next = controlList->next->next;
+    
+    pthread_mutex_unlock(&controlMutex);
+
+    return res;
+}
+Message * popUserList(){
+    
+    pthread_mutex_lock(&userMutex);
+    while(controlList->next == NULL){
+        // Block
+        pthread_cond_wait(&userCond, &userMutex);
+    }
+    
+    Message * res = controlList->next->m;
+    
+    controlList->next = controlList->next->next;
+    
+    pthread_mutex_unlock(&userMutex);
+
+    return res;
+}
+
+void * message_receiver(void * sockfd_ptr){
+    int sockfd = *(int *)sockfd_ptr;
+    char buff[MAX];
+    
+    while(1){
+//        printf("Reading\n");
+        bzero(buff, MAX); 
+        int ret = read(sockfd, buff, MAX);
+        if(ret <= 0)
+            continue;
+        struct Message* received = string_to_packet(buff);
+        if (received->type == MESSAGE) { 
+            pthread_mutex_lock(&userMutex);
+            
+            addToMsgList(received, userMessages);
+            
+            pthread_cond_signal(&userCond);
+            
+            printf("%s: %s\n", received->source, received->data );
+            
+            pthread_mutex_unlock(&userMutex);
+        }else{
+            pthread_mutex_lock(&controlMutex);
+            
+            addToMsgList(received, controlList);
+            
+            pthread_cond_signal(&conrolCond);
+            
+            pthread_mutex_unlock(&controlMutex);
+        }
+    }
+    return sockfd_ptr;
+}
+
 int main() 
 {
+    // base
+    controlList = (MessageList *)malloc(sizeof(MessageList));
+    userMessages = (MessageList *)malloc(sizeof(MessageList));
+    
+    // init
+    controlList->m = NULL;
+    controlList->next = NULL;
+    userMessages->m = NULL;
+    userMessages->next = NULL;
+    
     int sockfd, connfd; 
     struct sockaddr_in servaddr, cli; 
 
@@ -36,11 +133,15 @@ int main()
     else
             printf("Socket successfully created..\n"); 
 
+    pthread_t receiver_thread;
+    pthread_create(&receiver_thread, NULL, message_receiver, &sockfd);
     
     _Bool quit = false;
     _Bool loged_in = false;
     char * username = NULL;
     while(!quit){
+        
+        
         Command c;
         char * command = (char *)malloc(50);
         char  * login_args [4];
@@ -146,11 +247,12 @@ int main()
                         char* sending_string = packet_to_string(sending);
                         write(sockfd, sending_string, strlen(sending_string));
                         
-                        char buff[MAX];
-                        bzero(buff, sizeof(buff)); 
-                        read(sockfd, buff, sizeof(buff));
-
-                        struct Message* received = string_to_packet(buff);
+//                        char buff[MAX];
+//                        bzero(buff, sizeof(buff)); 
+//                        read(sockfd, buff, sizeof(buff));
+//
+//                        struct Message* received = string_to_packet(buff);
+                        Message * received = popControlList();
                         if (received->type == QU_ACK) { 
                             printf("Currently Active Sessions:\n%s", received->data);
                         } 
@@ -223,11 +325,12 @@ int main()
                         write(sockfd, sending_string, strlen(sending_string));
                         
                         // wait for lo_ack or lo_nack
-                        char buff[MAX];
-                        bzero(buff, sizeof(buff)); 
-                        read(sockfd, buff, sizeof(buff));
-
-                        struct Message* received = string_to_packet(buff);
+//                        char buff[MAX];
+//                        bzero(buff, sizeof(buff)); 
+//                        read(sockfd, buff, sizeof(buff));
+//
+//                        struct Message* received = string_to_packet(buff);
+                        Message * received = popControlList();
                         if (received->type == JN_ACK) {
                             printf ("Joined session: %s\n", word);
                         } 
@@ -259,11 +362,12 @@ int main()
                             write(sockfd, sending_string, strlen(sending_string));
 
                             // wait for lo_ack or lo_nack
-                            char buff[MAX];
-                            bzero(buff, sizeof(buff)); 
-                            read(sockfd, buff, sizeof(buff));
-
-                            struct Message* received = string_to_packet(buff);
+//                            char buff[MAX];
+//                            bzero(buff, sizeof(buff)); 
+//                            read(sockfd, buff, sizeof(buff));
+//
+//                            struct Message* received = string_to_packet(buff);
+                            Message * received = popControlList();
                             if (received->type == NS_ACK) { 
                                 printf ("new session created\n");
                                 printf ("session ID: %s\n", word);
@@ -332,11 +436,12 @@ int main()
             write(sockfd, sending_string, strlen(sending_string));
             
             // wait for lo_ack or lo_nack
-            char buff[MAX];
-            bzero(buff, sizeof(buff)); 
-            read(sockfd, buff, sizeof(buff));
-
-            struct Message* received = string_to_packet(buff);
+//            char buff[MAX];
+//            bzero(buff, sizeof(buff)); 
+//            read(sockfd, buff, sizeof(buff));
+//
+//            struct Message* received = string_to_packet(buff);
+            Message * received = popControlList();
             if (received->type == LO_ACK) { 
                 loged_in = true; 
                 username = login_args[0];
@@ -357,5 +462,7 @@ int main()
     // close the socket 
     close(sockfd); 
 } 
+
+
 
 

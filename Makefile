@@ -5,7 +5,7 @@ all: ${Lab4}
 server: server.o message.o table.o
 	gcc server.o message.o table.o -pthread -g -o server
 client: client.o message.o table.o
-	gcc client.o message.o table.o -g -o client
+	gcc client.o message.o table.o -pthread -g -o client
 server.o: server.c
 	gcc server.c -c -g -o server.o
 client.o: client.c

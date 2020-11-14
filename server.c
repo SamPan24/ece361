@@ -210,7 +210,22 @@ void handleUserRequests( UserData * data){
         }
         Message * m = string_to_packet(buf);
         if(m->type == MESSAGE){
-            printf("User %s Sent : %s\n", m->source, m->data);
+            printf("User %s Sent : %s\n", data->username, m->data);
+            
+            pthread_mutex_lock(&sessionDBMutex);
+            SessionData * sessData = find_item(data->sessid, sessionDB);
+            UserList * head = sessData->connected_users;
+            while(head != NULL){
+                
+                pthread_mutex_unlock(&loginDBMutex);
+                int temp_sock = ((UserData *)find_item(head->username, loginDB))->connfd;
+                pthread_mutex_unlock(&loginDBMutex);
+                
+                text_message_from_source(temp_sock, MESSAGE, m->data, data->username);
+                head = head->next;
+            }
+            pthread_mutex_unlock(&sessionDBMutex);
+            
         } 
         else if(m->type == LOGIN){
             printf("Double Login attempt!\n");
