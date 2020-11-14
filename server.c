@@ -16,6 +16,7 @@
 #include "message.h" 
 #include "hash_table.h"
 #include <sched.h>
+#include <signal.h>
 #define ERROR -1
 
 char * authenticate(UserData * d);
@@ -31,6 +32,25 @@ HashTable * sessionDB = NULL;
     
 pthread_mutex_t loginDBMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t sessionDBMutex = PTHREAD_MUTEX_INITIALIZER;
+
+void exit_server_handler(int sig){
+    // Send exit to all logged in
+    
+    printf("Forced Shutdown!\nExit sent to : \n");
+    for(int i = 0 ; i < loginDB->size; i++){
+        if(loginDB->lists[i] != NULL){
+            CollisionList * temp = loginDB->lists[i];
+            while(temp != NULL){
+                int sockfd = ((UserData *)temp->element->data)->connfd;
+                empty_message(sockfd, EXIT);
+                printf("%s\n", temp->element->key);
+                temp = temp->next;
+            }
+        }
+    }
+    
+    exit(0);
+}
 
 int main(int argc, char *argv[]) 
 { 
@@ -70,6 +90,8 @@ int main(int argc, char *argv[])
     // Max users 50, Sessions 10
     loginDB = hash_table_init(50);
     sessionDB = hash_table_init(10);
+    
+    signal(SIGINT, exit_server_handler);
     
     // start listening
     while(true)
@@ -266,11 +288,14 @@ void handleUserRequests( UserData * data){
             
             if(!done){
                 printf("Session Creation Failed!\n");
+                empty_message(data->connfd, NS_NACK);
             }
-            else
+            else {
                 printf("New session Created!\n");
             
-            empty_message(data->connfd, NS_ACK);
+                empty_message(data->connfd, NS_ACK);
+            }
+                
             
         } 
         else if(m->type == JOIN){

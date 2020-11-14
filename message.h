@@ -26,6 +26,7 @@ typedef enum MessageType {
     LEAVE_SESS ,
     NEW_SESS ,
     NS_ACK ,
+    NS_NACK ,
     MESSAGE ,
     QUERY ,
     QU_ACK

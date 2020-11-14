@@ -9,9 +9,12 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <pthread.h>
+#include <signal.h>
 
 #include "message.h"
 #include "hash_table.h"
+
+#define SIG_ABRT -10
 
 typedef enum Command {
     Login, 
@@ -25,6 +28,8 @@ typedef enum Command {
 
 MessageList * controlList = NULL;
 MessageList * userMessages= NULL;
+
+_Bool forceLogout = false;
 
 pthread_mutex_t controlMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t userMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -75,12 +80,43 @@ Message * popUserList(){
     return res;
 }
 
+void freeMsgList(MessageList *l){
+    MessageList * head = l->next;
+    while(head != NULL){
+        MessageList * temp = head->next;
+        if(head->m->type == MESSAGE){
+            //printf("Backlog Message| From: %8s Data: %s\n", head->m->source, head->m->data);
+        }
+        free(head->m);
+        free(head);
+        head = temp;
+    }
+}
+
+void message_receiver_terminate_handler(int sig){
+    // free list
+    pthread_mutex_lock(&userMutex);
+    freeMsgList(userMessages);
+    pthread_mutex_unlock(&userMutex);
+
+    pthread_mutex_lock(&controlMutex);
+    freeMsgList(controlList);
+    pthread_mutex_unlock(&controlMutex);
+
+    // reset
+    controlList->next = NULL;
+    userMessages->next = NULL;
+}
+
 void * message_receiver(void * sockfd_ptr){
+
+    // attach a sig handler
+    signal(SIG_ABRT, message_receiver_terminate_handler);
+
     int sockfd = *(int *)sockfd_ptr;
     char buff[MAX];
     
     while(1){
-//        printf("Reading\n");
         bzero(buff, MAX); 
         int ret = read(sockfd, buff, MAX);
         if(ret <= 0)
@@ -97,7 +133,13 @@ void * message_receiver(void * sockfd_ptr){
             
             pthread_mutex_unlock(&userMutex);
         }else{
+            
             pthread_mutex_lock(&controlMutex);
+            if(received->type == EXIT){
+                // final message, server exitted
+                printf("Server Exited!\n");
+                forceLogout = true;
+            }
             
             addToMsgList(received, controlList);
             
@@ -111,6 +153,7 @@ void * message_receiver(void * sockfd_ptr){
 
 int main() 
 {
+    forceLogout = false;
     // base
     controlList = (MessageList *)malloc(sizeof(MessageList));
     userMessages = (MessageList *)malloc(sizeof(MessageList));
@@ -122,25 +165,14 @@ int main()
     userMessages->next = NULL;
     
     int sockfd, connfd; 
-    struct sockaddr_in servaddr, cli; 
-
-    // socket create and varification 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-    if (sockfd == -1) { 
-            printf("socket creation failed...\n"); 
-            exit(0); 
-    } 
-    else
-            printf("Socket successfully created..\n"); 
+    struct sockaddr_in servaddr; 
 
     pthread_t receiver_thread;
-    pthread_create(&receiver_thread, NULL, message_receiver, &sockfd);
-    
+
     _Bool quit = false;
     _Bool loged_in = false;
     char * username = NULL;
     while(!quit){
-        
         
         Command c;
         char * command = (char *)malloc(50);
@@ -148,7 +180,13 @@ int main()
         size_t len = 50;
         printf(">");
         getline(&command, &len, stdin);
-
+        if(forceLogout && loged_in){
+            loged_in = false;
+            pthread_kill(receiver_thread, SIG_ABRT);
+            close(sockfd);
+            printf("Forced Logout!\n");
+            continue;
+        }
         char * word_array= (char *)malloc(len +1);
         strncpy(word_array , command, len);
         char * word = strtok(word_array, " ");
@@ -187,6 +225,9 @@ int main()
                         strcpy(sending->data, "");
                         char* sending_string = packet_to_string(sending);
                         write(sockfd, sending_string, strlen(sending_string)); 
+                        
+                        pthread_kill(receiver_thread, SIG_ABRT);
+                        close(sockfd);
                         // next command
                         break;
                     } 
@@ -279,7 +320,7 @@ int main()
                         break;
                     } 
                     else {
-                        printf("Invalid Command! WORD: %s\n", word);
+                        printf("Invalid Command!\n");
                     }
                 }
                 else {
@@ -324,12 +365,6 @@ int main()
                         
                         write(sockfd, sending_string, strlen(sending_string));
                         
-                        // wait for lo_ack or lo_nack
-//                        char buff[MAX];
-//                        bzero(buff, sizeof(buff)); 
-//                        read(sockfd, buff, sizeof(buff));
-//
-//                        struct Message* received = string_to_packet(buff);
                         Message * received = popControlList();
                         if (received->type == JN_ACK) {
                             printf ("Joined session: %s\n", word);
@@ -361,16 +396,14 @@ int main()
 
                             write(sockfd, sending_string, strlen(sending_string));
 
-                            // wait for lo_ack or lo_nack
-//                            char buff[MAX];
-//                            bzero(buff, sizeof(buff)); 
-//                            read(sockfd, buff, sizeof(buff));
-//
-//                            struct Message* received = string_to_packet(buff);
+         
                             Message * received = popControlList();
                             if (received->type == NS_ACK) { 
                                 printf ("new session created\n");
                                 printf ("session ID: %s\n", word);
+                            } 
+                            else if (received->type == NS_NACK) { 
+                                printf ("session already exists\n");
                             } 
                             // create with sess id word
                         }
@@ -383,7 +416,7 @@ int main()
                     }
                 }
             }
-
+            
             // get next word
             word_count++;
             word = strtok (NULL, " ");
@@ -407,7 +440,25 @@ int main()
             }
         }
         else if(c == Login){
-            assert(word_count == 5);
+            if(loged_in){
+                printf("Logout first!\n");
+                continue;
+            }
+                
+            if(word_count != 5){
+                printf("Invalid Arguments!\n");
+                continue;
+            }
+            // socket create and varification 
+            sockfd = socket(AF_INET, SOCK_STREAM, 0); 
+            if (sockfd == -1) { 
+                    printf("Socket Creation Failed!\n"); 
+                    continue;
+            } 
+            else
+                    printf("Socket successfully created\n"); 
+
+            pthread_create(&receiver_thread, NULL, message_receiver, &sockfd);
             bzero(&servaddr, sizeof(servaddr)); 
 
             // assign IP, PORT 
@@ -417,12 +468,16 @@ int main()
 
             // connect the client socket to server socket 
             if (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0) { 
-                    printf("connection with the server failed...\n"); 
-                    exit(0); 
+                printf("Server Connection Failed!\n"); 
+                close(sockfd);
+
+                pthread_kill(receiver_thread, SIG_ABRT);
+                continue;
             } 
-            else
-                    printf("connected to the server..\n"); 
-            
+            else{
+                forceLogout = false;
+                printf("Connected!\n"); 
+            }
             // send/receive packets
             struct Message* sending = (Message *)malloc(sizeof(Message));
 
@@ -436,19 +491,20 @@ int main()
             write(sockfd, sending_string, strlen(sending_string));
             
             // wait for lo_ack or lo_nack
-//            char buff[MAX];
-//            bzero(buff, sizeof(buff)); 
-//            read(sockfd, buff, sizeof(buff));
-//
-//            struct Message* received = string_to_packet(buff);
-            Message * received = popControlList();
+
+            Message * received;
+            do{
+                received = popControlList();
+            }while(received->type == EXIT);
+            
             if (received->type == LO_ACK) { 
                 loged_in = true; 
                 username = login_args[0];
+                
                 // Dont delete login_args 0
                 continue; 
             } 
-            else {
+            else if(received->type == LO_NAK){
                 loged_in = false;
                 printf ("login failed, try again\n");
                 continue;
