@@ -18,6 +18,7 @@ typedef struct UserData {
     int connfd;
     pthread_t p;
     char sessid[20];
+    char * username;
 } UserData;
 
 typedef struct UserList {

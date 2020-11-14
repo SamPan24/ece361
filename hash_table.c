@@ -105,11 +105,15 @@ void print_table(struct HashTable *wc)
 
 char * session_table_to_string(HashTable * table){
     char * buf_tot = (char *)malloc(5 * MAX);
+    bzero(buf_tot, 5*MAX);
     
     for(int i = 0 ; i < table->size; i++){
         if(table->lists[i] != NULL){
             char * temp = list_session_to_string(table->lists[i]);
-            strcat(buf_tot, temp);
+            if(i == 0)
+                strcpy(buf_tot, temp);
+            else
+                strcat(buf_tot, temp);
             free(temp);
         }
             
@@ -139,14 +143,20 @@ void print_list(CollisionList* list){
 }
 
 char * user_list_to_string(UserList * l){
-    char * buf = (char *)malloc(MAX_NAME);
+    char * buf = (char *)malloc(MAX);
     char * buf_tot = (char *)malloc(MAX);
+    _Bool first = true;
     while(l != NULL){
         if(l->next != NULL)
             sprintf(buf, "%s, ", l->username);
         else
             sprintf(buf, "%s", l->username);
-        strcat(buf_tot, buf);
+        if(first){
+            first = false;
+            strcpy(buf_tot, buf);
+        }else{
+            strcat(buf_tot, buf);
+        }
         l = l->next;
     }
     free(buf);
@@ -157,11 +167,20 @@ char * list_session_to_string(CollisionList* list){
     CollisionList * temp = list;
     char * buf = (char *)malloc(MAX);
     char * buf_tot = (char *)malloc(5 * MAX);
+    _Bool first = true; 
+    int i = 0;
     while(temp != NULL){
-        char * temp_str = user_list_to_string( ((SessionData *)list->element->data)->connected_users );
+        i++;
+        char * temp_str = user_list_to_string( ((SessionData *)temp->element->data)->connected_users );
         sprintf(buf,"Session ID:%6s Users::%s\n" , temp->element->key, temp_str);
         free(temp_str);
-        strcat(buf_tot, buf);
+        if(first){
+            first = false;
+            strcpy(buf_tot, buf);
+        }
+        else {
+            strcat(buf_tot, buf);
+        }
         temp = temp->next;
     }
     free(buf);

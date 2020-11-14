@@ -14,10 +14,6 @@
 #ifndef MESSAGE_H
 #define MESSAGE_H
 
-#define MAX_NAME 50
-#define MAX_DATA 1024
-
-
 typedef enum MessageType {
     LOGIN ,
     LO_ACK ,
@@ -38,8 +34,8 @@ typedef enum MessageType {
 typedef struct Message {
     MessageType type;
     unsigned int size;
-    char source[MAX_NAME];
-    char data[MAX_DATA];
+    char source[50];
+    char data[1024];
     
 } Message;
 

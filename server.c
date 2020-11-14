@@ -22,11 +22,15 @@ char * authenticate(UserData * d);
 _Bool checkDB(Message * m);
 void * newUserHandler(void * data);
 
+_Bool remove_from_session(char * sessid, char * username);
+_Bool logout(UserData * data);
 
 //Prepare Global Login,Session DB
 HashTable * loginDB = NULL;
 HashTable * sessionDB = NULL;
     
+pthread_mutex_t loginDBMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sessionDBMutex = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int argc, char *argv[]) 
 { 
@@ -90,6 +94,8 @@ int main(int argc, char *argv[])
         
         UserData * data = (UserData *)malloc(sizeof(UserData));
         data->connfd = connfd;
+        // No username yet;
+        data->username = NULL;
         pthread_create( &(data->p), NULL, newUserHandler, (void *)data);
         
         
@@ -102,20 +108,90 @@ void empty_message(int connfd, MessageType m){
     struct Message* mess = (Message *)malloc(sizeof(Message));
     mess->size = 0;
     mess->type = m;
+    strcpy(mess->source, "");
+    strcpy(mess->data, "");
     char* sending_string = packet_to_string(mess);
     write(connfd, sending_string, strlen(sending_string));
     free(sending_string);
     free(mess);
 }
 
-void handleUserRequests(UserData * data){
+_Bool logout(UserData * data){
+    // remove from table
+    _Bool removeSess = true;
+    if(strcmp(data->sessid, "") != 0)
+        removeSess = remove_from_session(data->sessid, data->username);
+    
+    pthread_mutex_lock(&loginDBMutex);
+    _Bool removeLogin = remove_item(data->username, loginDB);
+    pthread_mutex_unlock(&loginDBMutex);
+
+    if(removeLogin != removeSess)
+        printf("Incomplete Logout!\n");
+    return removeSess && removeLogin ;
+}
+
+_Bool remove_from_session(char * sessid, char * username){
+    _Bool done = false;
+    
+    pthread_mutex_lock(&sessionDBMutex);
+    SessionData * sessData = find_item(sessid, sessionDB);
+    
+    if(sessData == NULL){
+        printf("Invalid SessionID!\n");
+        pthread_mutex_unlock(&sessionDBMutex);
+        return false;
+    }
+                
+    UserList * head = sessData->connected_users;
+
+    if(head == NULL){
+        printf("Empty Session!\n");
+        pthread_mutex_unlock(&sessionDBMutex);
+        return false;
+    }
+
+    UserList * prev = NULL;
+    while(head != NULL){
+        if(strcmp(head->username, username) == 0){
+            // found element, remove
+            if(prev == NULL){
+                // first element
+                sessData->connected_users = NULL;
+            }
+            else {
+                prev->next = head->next;
+            }
+            free(head->username);
+            free(head);
+            done = true;
+            break;
+        }
+        prev = head;
+        head = head->next;
+    }
+    
+    pthread_mutex_unlock(&sessionDBMutex);
+    return done;
+}
+
+void handleUserRequests( UserData * data){
     while(1){
         char * buf = (char *)malloc(MAX);
         bzero(buf, MAX);
         int ret = read(data->connfd, buf, MAX);
-        if(ret <= 0){
+        if(ret = 0){
+            printf("Server Spin!\n");
             sched_yield();
             continue;
+        }
+        else if(ret < 0){
+            printf("Client Unexpectantly Quit!\n");
+            printf("Logging out user %s\n", data->username);
+            logout(data);
+            int ret = ERROR;
+            free(buf);
+            pthread_exit(&ret);
         }
         Message * m = string_to_packet(buf);
         if(m->type == MESSAGE){
@@ -126,21 +202,31 @@ void handleUserRequests(UserData * data){
             empty_message(data->connfd, LO_NAK);
         } 
         else if(m->type == LOGOUT){
-            printf("User %s Logged out.\n" , m->source);
             
-            // remove from table
-            remove_item(m->source, loginDB);
+            printf("Logging out User %s\n", data->username);
+            
+            _Bool done = logout(data);
+            
+            if(!done)
+                printf("Invalid Logout!\n");
             
             printf("Now Logged In : \n");
             print_table(loginDB);
+            
+            free(m);
+            free(buf);
+            int ret = 0;
+            pthread_exit(&ret);
         } 
         else if(m->type == QUERY){
             
             // Send QU_ACK
             struct Message* mess = (Message *)malloc(sizeof(Message));
             mess->type = QU_ACK;
-            strcat(mess->data, session_table_to_string(sessionDB));
+            strcpy(mess->data, session_table_to_string(sessionDB));
             mess->size = strlen(mess->data);
+            strcpy(mess->source, "");
+            printf("Sending : \n%s\n", mess->data);
             char* sending_string = packet_to_string(mess);
             write(data->connfd, sending_string, strlen(sending_string));
             free(sending_string);
@@ -151,18 +237,25 @@ void handleUserRequests(UserData * data){
             SessionData * sessData = (SessionData *)malloc(sizeof(SessionData));
             // No users at first
             sessData->connected_users = NULL;
+            
+            pthread_mutex_lock(&sessionDBMutex);
             _Bool done = insert_item(m->data, sessData,sessionDB);
+            pthread_mutex_unlock(&sessionDBMutex);
             
             if(!done){
                 printf("Session Creation Failed!\n");
             }
-            empty_message(data->connfd, NS_ACK);
+            else
+                printf("New session Created!");
             
-            printf("New session Created!");
+            empty_message(data->connfd, NS_ACK);
             
         } 
         else if(m->type == JOIN){
+            pthread_mutex_lock(&sessionDBMutex);
             SessionData * sessData = find_item(m->data, sessionDB);
+            pthread_mutex_unlock(&sessionDBMutex);
+            
             if(sessData == NULL){
                 // session doesn't exist, send nack
                 empty_message(data->connfd, JN_NAK);
@@ -173,7 +266,7 @@ void handleUserRequests(UserData * data){
                     // No users
                     sessData->connected_users = (UserList *)malloc(sizeof(UserList));
                     sessData->connected_users->next = NULL;
-                    sessData->connected_users->username = (char *)malloc(MAX_NAME);
+                    sessData->connected_users->username = (char *)malloc(MAX);
                     strcpy(sessData->connected_users->username , m->source);
                     printf("saved :%s\n", m->source);
                 }
@@ -187,7 +280,7 @@ void handleUserRequests(UserData * data){
                     // Head points to last element now
                     head->next = (UserList *)malloc(sizeof(UserList));
                     head->next->next = NULL;
-                    head->next->username = (char *)malloc(MAX_NAME);
+                    head->next->username = (char *)malloc(MAX);
                     strcpy(head->next->username, m->source);
                     printf("saved :%s\n", m->source);
                 }
@@ -204,32 +297,8 @@ void handleUserRequests(UserData * data){
                 // Not in session
             }
             else{
-                SessionData * sessData = find_item(data->sessid, sessionDB);
+                remove_from_session(data->sessid, data->username);
                 
-                assert(sessData != NULL);
-                
-                UserList * head = sessData->connected_users;
-                    
-                assert(head != NULL);
-                
-                UserList * prev = NULL;
-                while(head != NULL){
-                    if(strcmp(head->username, m->source) == 0){
-                        // found element, remove
-                        if(prev == NULL){
-                            // first element
-                            sessData->connected_users = NULL;
-                        }
-                        else {
-                            prev->next = head->next;
-                        }
-                        free(head->username);
-                        free(head);
-                        break;
-                    }
-                    prev = head;
-                    head = head->next;
-                }
                 strcpy(data->sessid, "");
             }
         }
@@ -245,12 +314,12 @@ void handleUserRequests(UserData * data){
 // All new users begin here
 void * newUserHandler(void * data){
     UserData * d = (UserData *)data;
-    char * username = authenticate(d);
-    if(username != NULL){
+    d->username = authenticate(d);
+    if(d->username != NULL){
         // valid user
         
-        printf("Now Logged In : \n");
-        print_table(loginDB);
+//        printf("Now Logged In : \n");
+//        print_table(loginDB);
         
         handleUserRequests(d);
     } 
@@ -265,16 +334,9 @@ char * authenticate(UserData *d)
     int connfd = d->connfd;
     char * buf  = (char *)malloc(sizeof(char) * 1024); 
     
-    // receive from client
-    int total = 0;
-//    while(1){
-//        int ret = read(connfd, buf + total, 1024); 
-//        total += ret;
-//        if(buf[total] == '\0')
-//            break;
-//    }
-    bzero(buf, 1024);
-    total = read(connfd, buf, 1024);
+    bzero(buf, MAX);
+    
+    int total = read(connfd, buf, MAX);
     
     Message * m = string_to_packet(buf);
 
@@ -282,7 +344,9 @@ char * authenticate(UserData *d)
     _Bool isValidUser = checkDB(m);
     // check if already loged in
     if(isValidUser){
+        pthread_mutex_lock(&loginDBMutex);
         done = insert_item(m->source, d, loginDB);
+        pthread_mutex_unlock(&loginDBMutex);
         if(!done){
             printf("User already logged in!\n");
         }
@@ -290,24 +354,16 @@ char * authenticate(UserData *d)
     if(done){
         
         // send Ack
-        struct Message* ack = (Message *)malloc(sizeof(Message));
-        ack->size = 0;
-        ack->type = LO_ACK;
-        char* sending_string = packet_to_string(ack);
-        write(connfd, sending_string, sizeof(sending_string));
+        empty_message(connfd, LO_ACK);
         free(buf);
-        buf = (char *)malloc(MAX_NAME);
+        buf = (char *)malloc(MAX);
         strcpy(buf, m->source);
         return buf;
     }
     else{
         // send no ack
         
-        struct Message* nack = (Message *)malloc(sizeof(Message));
-        nack->size = 0;
-        nack->type = LO_NAK;
-        char* sending_string = packet_to_string(nack);
-        write(connfd, sending_string, sizeof(sending_string));
+        empty_message(connfd, LO_NAK);
         free(buf);
         return NULL;
     }
@@ -326,8 +382,8 @@ _Bool checkDB(Message * m){
         printf( "No User Database found!(Not accessible)" ) ; 
         return false;
     } 
-    char * username = (char *)malloc(MAX_NAME);
-    char * password = (char *)malloc(MAX_NAME);
+    char * username = (char *)malloc(MAX);
+    char * password = (char *)malloc(MAX);
     while (true){
         
         int res = fscanf(filePointer, "%s %s\n", username, password); 

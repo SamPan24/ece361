@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "message.h"
+#include "hash_table.h"
 
 char * packet_to_string(Message * p){
     char * result = (char *)malloc(strlen(p->source) +  strlen(p->data) + 20);
@@ -16,19 +17,17 @@ char * packet_to_string(Message * p){
     strcat(temp, p->data);
     
     // Header
-    sprintf(result , "%d:%d:%s" , p->type , p->size , temp);
+    sprintf(result , "%d:%d:%s(" , p->type , p->size , temp);
     
     return result;
 }
 
 Message * string_to_packet(char * str){
     Message * newP  = (Message *)malloc(sizeof(Message));
-    char * buf= (char *)malloc(50);
-    sscanf(str , "%d:%d:%[^\t]", &newP->type , &newP->size, buf);
-    printf("R: %s\n%d\n", buf, strlen(buf) - newP->size);
+    char * buf= (char *)malloc(MAX);
+    sscanf(str , "%d:%d:%[^(]", &newP->type , &newP->size, buf);
     strncpy(newP->source , buf, strlen(buf) - newP->size );
     newP->source[strlen(buf) - newP->size] = '\0';
     strcpy(newP->data , buf + strlen(buf) - newP->size );
-    
     return newP;
 }

@@ -10,8 +10,7 @@
 #include <assert.h>
 
 #include "message.h"
-
-#define MAX 80
+#include "hash_table.h"
 
 typedef enum Command {
     Login, 
@@ -98,10 +97,10 @@ int main()
                         loged_in = false;
                         
                         struct Message* sending = (Message *)malloc(sizeof(Message));
-                        strcpy (sending->source, username);
                         sending->size = 0;
-
                         sending->type = LOGOUT;
+                        strcpy (sending->source, username);
+                        strcpy(sending->data, "");
                         char* sending_string = packet_to_string(sending);
                         write(sockfd, sending_string, strlen(sending_string)); 
                         // next command
@@ -118,7 +117,9 @@ int main()
                         struct Message* sending = (Message *)malloc(sizeof(Message));
                         sending->size = 0;
                         sending->type = LEAVE_SESS;
-                        
+                        strcpy(sending->data, "");
+                        strcpy(sending->source, username);
+                                
                         char* sending_string = packet_to_string(sending);
                         
                         write(sockfd, sending_string, strlen(sending_string));
@@ -138,7 +139,8 @@ int main()
                         struct Message* sending = (Message *)malloc(sizeof(Message));
 
                         sending->size = 0;
-
+                        strcpy(sending->data, "");
+                        strcpy(sending->source, username);
                         sending->type = QUERY;
                         char* sending_string = packet_to_string(sending);
                         write(sockfd, sending_string, strlen(sending_string));
@@ -150,32 +152,7 @@ int main()
                         struct Message* received = string_to_packet(buff);
                         if (received->type == QU_ACK) { 
                             printf("Currently Active Sessions:\n%s", received->data);
-//                            //print out the list of connections
-//                            char *list;
-//                            strcpy(list, received->data); 
-//                            
-//                            char* token = strtok(list, " "); 
-//                        
-//                            // Keep printing tokens while one of the 
-//                            // delimiters present in str[]. 
-//                            int check = 0;
-//                            while (token != NULL) { 
-//                                if (check%2 == 0){
-//                                    printf("user:   %s\n", token); 
-//                                    check++;
-//                                    token = strtok(NULL, " ");
-//                                }
-//                                else{
-//                                    printf("session:   %s\n", token); 
-//                                    check++;
-//                                    token = strtok(NULL, " ");
-//                                }
-//                            }
                         } 
-
-                        
-
-                        // next command
                         break;
                     } 
                     else if(strcmp(word , "/quit\n") == 0){
