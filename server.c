@@ -15,8 +15,7 @@
 #include <assert.h>
 #include "message.h" 
 #include "hash_table.h"
-
-#define MAX 1024 
+#include <sched.h>
 #define ERROR -1
 
 char * authenticate(UserData * d);
@@ -114,8 +113,10 @@ void handleUserRequests(UserData * data){
         char * buf = (char *)malloc(MAX);
         bzero(buf, MAX);
         int ret = read(data->connfd, buf, MAX);
-        if(ret <= 0)
+        if(ret <= 0){
+            sched_yield();
             continue;
+        }
         Message * m = string_to_packet(buf);
         if(m->type == MESSAGE){
             printf("User %s Sent : %s\n", m->source, m->data);
@@ -135,10 +136,15 @@ void handleUserRequests(UserData * data){
         } 
         else if(m->type == QUERY){
             
-            
-            
             // Send QU_ACK
-            empty_message(data->connfd, QU_ACK);
+            struct Message* mess = (Message *)malloc(sizeof(Message));
+            mess->type = QU_ACK;
+            strcat(mess->data, session_table_to_string(sessionDB));
+            mess->size = strlen(mess->data);
+            char* sending_string = packet_to_string(mess);
+            write(data->connfd, sending_string, strlen(sending_string));
+            free(sending_string);
+            free(mess);
             
         }
         else if(m->type == NEW_SESS){
@@ -151,6 +157,8 @@ void handleUserRequests(UserData * data){
                 printf("Session Creation Failed!\n");
             }
             empty_message(data->connfd, NS_ACK);
+            
+            printf("New session Created!");
             
         } 
         else if(m->type == JOIN){
@@ -165,7 +173,9 @@ void handleUserRequests(UserData * data){
                     // No users
                     sessData->connected_users = (UserList *)malloc(sizeof(UserList));
                     sessData->connected_users->next = NULL;
+                    sessData->connected_users->username = (char *)malloc(MAX_NAME);
                     strcpy(sessData->connected_users->username , m->source);
+                    printf("saved :%s\n", m->source);
                 }
                 else{
                     UserList * head = sessData->connected_users;
@@ -177,7 +187,9 @@ void handleUserRequests(UserData * data){
                     // Head points to last element now
                     head->next = (UserList *)malloc(sizeof(UserList));
                     head->next->next = NULL;
+                    head->next->username = (char *)malloc(MAX_NAME);
                     strcpy(head->next->username, m->source);
+                    printf("saved :%s\n", m->source);
                 }
                 
                 // set user session

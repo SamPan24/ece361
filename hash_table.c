@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include "hash_table.h"
+#include "message.h"
 
 // linked list functions
 void free_list(CollisionList* list);
@@ -18,6 +19,9 @@ CollisionList* insert_list(CollisionList* list, item* element);
 void print_list(CollisionList* list);
 void * find_list(CollisionList* list, char * word);
 CollisionList* remove_list(CollisionList* list, char * word, _Bool * removed);
+
+char * list_session_to_string(CollisionList* list);
+char * user_list_to_string(UserList * l);
 
 // Hash key Function
 long hash( char *str);
@@ -99,6 +103,20 @@ void print_table(struct HashTable *wc)
     }
 }
 
+char * session_table_to_string(HashTable * table){
+    char * buf_tot = (char *)malloc(5 * MAX);
+    
+    for(int i = 0 ; i < table->size; i++){
+        if(table->lists[i] != NULL){
+            char * temp = list_session_to_string(table->lists[i]);
+            strcat(buf_tot, temp);
+            free(temp);
+        }
+            
+    }
+    return buf_tot;
+}
+
 void hash_table_destroy(struct HashTable *wc)
 {
     for(int i = 0 ; i < wc->size; i++){
@@ -120,12 +138,34 @@ void print_list(CollisionList* list){
     }
 }
 
-void print_list_session(CollisionList* list){
+char * user_list_to_string(UserList * l){
+    char * buf = (char *)malloc(MAX_NAME);
+    char * buf_tot = (char *)malloc(MAX);
+    while(l != NULL){
+        if(l->next != NULL)
+            sprintf(buf, "%s, ", l->username);
+        else
+            sprintf(buf, "%s", l->username);
+        strcat(buf_tot, buf);
+        l = l->next;
+    }
+    free(buf);
+    return buf_tot;
+}
+
+char * list_session_to_string(CollisionList* list){
     CollisionList * temp = list;
+    char * buf = (char *)malloc(MAX);
+    char * buf_tot = (char *)malloc(5 * MAX);
     while(temp != NULL){
-        printf("%s:%d\n" , temp->element->key , ((UserData *)temp->element->data)->connfd);
+        char * temp_str = user_list_to_string( ((SessionData *)list->element->data)->connected_users );
+        sprintf(buf,"Session ID:%6s Users::%s\n" , temp->element->key, temp_str);
+        free(temp_str);
+        strcat(buf_tot, buf);
         temp = temp->next;
     }
+    free(buf);
+    return buf_tot;
 }
  
 CollisionList* create_list_item () {

@@ -24,7 +24,8 @@ char * packet_to_string(Message * p){
 Message * string_to_packet(char * str){
     Message * newP  = (Message *)malloc(sizeof(Message));
     char * buf= (char *)malloc(50);
-    sscanf(str , "%d:%d:%s", &newP->type , &newP->size, buf);
+    sscanf(str , "%d:%d:%[^\t]", &newP->type , &newP->size, buf);
+    printf("R: %s\n%d\n", buf, strlen(buf) - newP->size);
     strncpy(newP->source , buf, strlen(buf) - newP->size );
     newP->source[strlen(buf) - newP->size] = '\0';
     strcpy(newP->data , buf + strlen(buf) - newP->size );

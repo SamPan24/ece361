@@ -54,6 +54,7 @@ typedef struct HashTable {
     struct CollisionList ** lists;
 } HashTable;
 
+#define MAX 1024 
 
 // hash table functions
 struct HashTable * hash_table_init(int s);
@@ -61,7 +62,7 @@ _Bool insert_item(char * word, void * d, struct HashTable * table);
 
 void print_table(struct HashTable *wc);
 void hash_table_destroy(struct HashTable *wc);
-
+char * session_table_to_string(HashTable * table);
 
 _Bool remove_item(char * word, HashTable * table);
 void * find_item(char * word, HashTable * table);
