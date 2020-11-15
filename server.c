@@ -223,7 +223,7 @@ void handleUserRequests( UserData * data){
             
         }
         else if(ret < 0){
-            printf("Client Unexpectanted Error!\n");
+            printf("Client Unexpected Error!\n");
             printf("Logging out user %s\n", data->username);
             logout(data);
             int ret = ERROR;
@@ -234,20 +234,22 @@ void handleUserRequests( UserData * data){
         if(m->type == MESSAGE){
             printf("User %s Sent : %s\n", data->username, m->data);
             
-            pthread_mutex_lock(&sessionDBMutex);
-            SessionData * sessData = find_item(data->sessid, sessionDB);
-            UserList * head = sessData->connected_users;
-            while(head != NULL){
-                
-                pthread_mutex_unlock(&loginDBMutex);
-                int temp_sock = ((UserData *)find_item(head->username, loginDB))->connfd;
-                pthread_mutex_unlock(&loginDBMutex);
-                
-                text_message_from_source(temp_sock, MESSAGE, m->data, data->username);
-                head = head->next;
+            if(strcmp(data->sessid, "") != 0){
+                pthread_mutex_lock(&sessionDBMutex);
+                SessionData * sessData = find_item(data->sessid, sessionDB);
+                UserList * head = sessData->connected_users;
+                while(head != NULL){
+                    if(strcmp(head->username, data->username) != 0){
+                        pthread_mutex_unlock(&loginDBMutex);
+                        int temp_sock = ((UserData *)find_item(head->username, loginDB))->connfd;
+                        pthread_mutex_unlock(&loginDBMutex);
+
+                        text_message_from_source(temp_sock, MESSAGE, m->data, data->username);
+                    }
+                    head = head->next;
+                }
+                pthread_mutex_unlock(&sessionDBMutex);
             }
-            pthread_mutex_unlock(&sessionDBMutex);
-            
         } 
         else if(m->type == LOGIN){
             printf("Double Login attempt!\n");
