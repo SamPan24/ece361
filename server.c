@@ -197,6 +197,7 @@ void handleUserRequests( UserData * data){
             if(!waiting){
                 waiting = true;
                 start = clock();
+                continue;
             }else{
                 // Already waiting
                 clock_t end = clock();
@@ -231,7 +232,17 @@ void handleUserRequests( UserData * data){
             pthread_exit(&ret);
         }
         Message * m = string_to_packet(buf);
-        if(m->type == MESSAGE){
+        if(strcmp(m->source, "INVALID") == 0){
+            printf("Received Invalid Packet!\n");
+            printf("Packet Data: %s\n" , m->data);
+            
+            printf("Logging out user %s\n", data->username);
+            logout(data);
+            int ret = ERROR;
+            free(buf);
+            pthread_exit(&ret);
+        }
+        else if (m->type == MESSAGE){
             printf("User %s Sent : %s\n", data->username, m->data);
             
             if(strcmp(data->sessid, "") != 0){
@@ -239,13 +250,13 @@ void handleUserRequests( UserData * data){
                 SessionData * sessData = find_item(data->sessid, sessionDB);
                 UserList * head = sessData->connected_users;
                 while(head != NULL){
-                    if(strcmp(head->username, data->username) != 0){
+//                    if(strcmp(head->username, data->username) != 0){
                         pthread_mutex_unlock(&loginDBMutex);
                         int temp_sock = ((UserData *)find_item(head->username, loginDB))->connfd;
                         pthread_mutex_unlock(&loginDBMutex);
 
                         text_message_from_source(temp_sock, MESSAGE, m->data, data->username);
-                    }
+//                    }
                     head = head->next;
                 }
                 pthread_mutex_unlock(&sessionDBMutex);

@@ -28,6 +28,12 @@ Message * string_to_packet(char * str){
     Message * newP  = (Message *)malloc(sizeof(Message));
     char * buf= (char *)malloc(MAX);
     sscanf(str , "%d:%d:%[^(]", &newP->type , &newP->size, buf);
+    if(strlen(buf) - newP->size < 0){
+        // Invalid Packet
+        strcpy(newP->source, "INVALID");
+        strcpy(newP->data , buf); 
+        return newP;
+    }
     strncpy(newP->source , buf, strlen(buf) - newP->size );
     newP->source[strlen(buf) - newP->size] = '\0';
     strcpy(newP->data , buf + strlen(buf) - newP->size );

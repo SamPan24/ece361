@@ -14,7 +14,10 @@
 #include "message.h"
 #include "hash_table.h"
 
+#include <curses.h>
+
 #define SIG_ABRT -10
+
 
 typedef enum Command {
     Login, 
@@ -35,7 +38,11 @@ pthread_mutex_t controlMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t userMutex = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t conrolCond = PTHREAD_COND_INITIALIZER;
-pthread_cond_t userCond = PTHREAD_COND_INITIALIZER;
+//pthread_cond_t userCond = PTHREAD_COND_INITIALIZER;
+
+
+int currentOutputX = 0, currentOutputY = 0;
+int currentFieldX = 0, currentFieldY = 0;
 
 void addToMsgList(Message *m , MessageList *l){
     
@@ -66,14 +73,15 @@ Message * popControlList(){
 Message * popUserList(){
     
     pthread_mutex_lock(&userMutex);
-    while(controlList->next == NULL){
-        // Block
-        pthread_cond_wait(&userCond, &userMutex);
+    while(userMessages->next == NULL){
+        // Non Block
+        pthread_mutex_unlock(&userMutex);
+        return NULL;
     }
     
-    Message * res = controlList->next->m;
+    Message * res = userMessages->next->m;
     
-    controlList->next = controlList->next->next;
+    userMessages->next = userMessages->next->next;
     
     pthread_mutex_unlock(&userMutex);
 
@@ -85,7 +93,7 @@ void freeMsgList(MessageList *l){
     while(head != NULL){
         MessageList * temp = head->next;
         if(head->m->type == MESSAGE){
-            //printf("Backlog Message| From: %8s Data: %s\n", head->m->source, head->m->data);
+            //printw("Backlog Message| From: %8s Data: %s\n", head->m->source, head->m->data);
         }
         free(head->m);
         free(head);
@@ -108,6 +116,25 @@ void message_receiver_terminate_handler(int sig){
     userMessages->next = NULL;
 }
 
+void display_messages(Message * received){
+    int currY, currX;
+    getyx(stdscr, currY, currX);
+
+    if(currY == 0){
+        // field
+        move(currentOutputY, currentFieldX);
+
+        printw("%s: %s\n", received->source, received->data );
+
+        getyx(stdscr, currentOutputY, currentOutputX);
+
+        move(currY, currX);
+    }
+    else{
+        printw("Wrong Time!");
+    }
+}
+
 void * message_receiver(void * sockfd_ptr){
 
     // attach a sig handler
@@ -127,9 +154,6 @@ void * message_receiver(void * sockfd_ptr){
             
             addToMsgList(received, userMessages);
             
-            pthread_cond_signal(&userCond);
-            
-            printf("%s: %s\n", received->source, received->data );
             
             pthread_mutex_unlock(&userMutex);
         }else{
@@ -137,7 +161,7 @@ void * message_receiver(void * sockfd_ptr){
             pthread_mutex_lock(&controlMutex);
             if(received->type == EXIT){
                 // final message, server exitted
-                printf("Server Exited!\n");
+                printw("Server Exited!\n");
                 forceLogout = true;
             }
             
@@ -151,8 +175,16 @@ void * message_receiver(void * sockfd_ptr){
     return sockfd_ptr;
 }
 
+
 int main() 
 {
+    
+    initscr();
+    cbreak();
+    noecho();
+    keypad(stdscr, true);
+    nodelay(stdscr, true);
+    
     forceLogout = false;
     // base
     controlList = (MessageList *)malloc(sizeof(MessageList));
@@ -172,19 +204,67 @@ int main()
     _Bool quit = false;
     _Bool loged_in = false;
     char * username = NULL;
+    
+    
     while(!quit){
         
         Command c;
         char * command = (char *)malloc(50);
         char  * login_args [4];
         size_t len = 50;
-        printf(">");
-        getline(&command, &len, stdin);
+        getyx(stdscr, currentOutputY, currentOutputX);
+        if(currentOutputY == 0)
+            currentOutputY = 2;
+        move(0, 0);
+        printw(">                                                                                                   ");
+        move(0,1);
+        
+        char ch = getch();
+        int i = 0;
+        while(ch != '\n'){
+            if(ch == ERR){
+                // Not responded
+                Message * m = popUserList();
+                while(m != NULL){
+                    display_messages(m);
+                    m = popUserList();
+                }
+            }
+            else if(ch == KEY_BACKSPACE || ch == 127 || ch == '\b' || ch == 7){
+                
+                if(i > 0){
+                    i = i - 1;
+                    move(0,i+1);
+                    addch(' ');
+                    move(0,i+1);
+                }
+                
+            }
+            else {
+                command[i] = ch;
+                i ++;
+                // echo
+                addch(ch);
+            }
+            ch = getch();
+        }
+        if(i == 0)
+            continue;
+        else{
+            // for compatability, remove later
+            command[i] = '\n';
+            command[i+1] = '\0';
+        }
+//        getline(&command, &len, stdin);
+//        printw("\nReceived : %s\n" , command);
+        printw("\n==================Messages==================\n");
+        move(currentOutputY, currentOutputX);
+        
         if(forceLogout && loged_in){
             loged_in = false;
             pthread_kill(receiver_thread, SIG_ABRT);
             close(sockfd);
-            printf("Forced Logout!\n");
+            printw("Forced Logout!\n");
             continue;
         }
         char * word_array= (char *)malloc(len +1);
@@ -212,19 +292,13 @@ int main()
                         c = Logout;
                         
                         if(!loged_in){
-                            printf("Not Logged in.\n");
+                            printw("Not Logged in.\n");
                             break;
                         }
                         // handle
                         loged_in = false;
                         
-                        struct Message* sending = (Message *)malloc(sizeof(Message));
-                        sending->size = 0;
-                        sending->type = LOGOUT;
-                        strcpy (sending->source, username);
-                        strcpy(sending->data, "");
-                        char* sending_string = packet_to_string(sending);
-                        write(sockfd, sending_string, strlen(sending_string)); 
+                        text_message_from_source(sockfd, LOGOUT, "", username);
                         
                         pthread_kill(receiver_thread, SIG_ABRT);
                         close(sockfd);
@@ -235,7 +309,7 @@ int main()
                         c = Join;
                         
                         if(!loged_in){
-                            printf("Not Logged in.\n");
+                            printw("Not Logged in.\n");
                             break;
                         }
                         // handle later
@@ -244,21 +318,14 @@ int main()
                         c = Leave;
                         
                         if(!loged_in){
-                            printf("Not Logged in.\n");
+                            printw("Not Logged in.\n");
                             break;
                         }
                         // send packets
-                        struct Message* sending = (Message *)malloc(sizeof(Message));
-                        sending->size = 0;
-                        sending->type = LEAVE_SESS;
-                        strcpy(sending->data, "");
-                        strcpy(sending->source, username);
-                                
-                        char* sending_string = packet_to_string(sending);
+                        text_message_from_source(sockfd, LEAVE_SESS, "", username);
                         
-                        write(sockfd, sending_string, strlen(sending_string));
                         // handle
-                        printf("left current session\n");
+                        printw("left current session\n");
                         // next command
                         break;
                     } 
@@ -266,7 +333,7 @@ int main()
                         c = Create;
                         
                         if(!loged_in){
-                            printf("Not Logged in.\n");
+                            printw("Not Logged in.\n");
                             break;
                         }
                         // handle later
@@ -275,27 +342,15 @@ int main()
                         c = List;
                         
                         if(!loged_in){
-                            printf("Not Logged in.\n");
+                            printw("Not Logged in.\n");
                             break;
                         }
 
-                        struct Message* sending = (Message *)malloc(sizeof(Message));
-
-                        sending->size = 0;
-                        strcpy(sending->data, "");
-                        strcpy(sending->source, username);
-                        sending->type = QUERY;
-                        char* sending_string = packet_to_string(sending);
-                        write(sockfd, sending_string, strlen(sending_string));
+                        text_message_from_source(sockfd, QUERY, "", username);
                         
-//                        char buff[MAX];
-//                        bzero(buff, sizeof(buff)); 
-//                        read(sockfd, buff, sizeof(buff));
-//
-//                        struct Message* received = string_to_packet(buff);
                         Message * received = popControlList();
                         if (received->type == QU_ACK) { 
-                            printf("Currently Active Sessions:\n%s", received->data);
+                            printw("Currently Active Sessions:\n%s", received->data);
                         } 
                         break;
                     } 
@@ -304,13 +359,8 @@ int main()
 
                         // handle
                         if (loged_in == true){
-                            struct Message* sending = (Message *)malloc(sizeof(Message));
-                            strcpy (sending->source, username);
-                            sending->size = 0;
-
-                            sending->type = LOGOUT;
-                            char* sending_string = packet_to_string(sending);
-                            write(sockfd, sending_string, strlen(sending_string)); 
+                            text_message_from_source(sockfd, LOGOUT, "", username);
+                        
                             loged_in = false;
                         }
 
@@ -320,7 +370,7 @@ int main()
                         break;
                     } 
                     else {
-                        printf("Invalid Command!\n");
+                        printw("Invalid Command!\n");
                     }
                 }
                 else {
@@ -333,7 +383,7 @@ int main()
                 // Not first word
                 if(text){
                     // 
-                    printf("ERROR!");
+                    printw("ERROR!");
                     exit(0);
                 }
                 else{
@@ -343,41 +393,30 @@ int main()
                             login_args[word_count -1] = (char *)malloc(50);
                             strcpy(login_args[word_count -1] , word);
                         }else{
-                            printf("Invalid Arguments\n");
+                            printw("Invalid Arguments\n");
                         }
                     }
                     else if (c == Join){
                         if(word_count == 1){
-                            // Session ID 
-                            
-                            // join with sess id word
-                            // send/receive packets
-                            
-                        struct Message* sending = (Message *)malloc(sizeof(Message));
-
-                        strcpy(sending->source, username);
-                        strcpy (sending->data, word);
-                        sending->data[strlen(word) -1] = '\0';
-                        
-                        sending->size = strlen(sending->data);
-                        sending->type = JOIN;
-                        char* sending_string = packet_to_string(sending);
-                        
-                        write(sockfd, sending_string, strlen(sending_string));
+                        // join with sess id word
+                        // send/receive packets
+                        if(word[strlen(word) -1] == '\n')
+                            word[strlen(word) -1] = '\0';
+                        text_message_from_source(sockfd, JOIN, word, username);
                         
                         Message * received = popControlList();
                         if (received->type == JN_ACK) {
-                            printf ("Joined session: %s\n", word);
+                            printw ("Joined session: %s\n", word);
                         } 
                         else if (received->type == JN_NAK) {
                             if(strcmp(received->data, "leave_first") == 0)
-                                printf ("Join failed: Leave current session first\n");
+                                printw ("Join failed: Leave current session first\n");
                             else
-                                printf ("Join failed: session %s does not exist\n", word);
+                                printw ("Join failed: session %s does not exist\n", word);
                         }
                         }
                         else {
-                            printf("Invalid Arguments\n");
+                            printw("Invalid Arguments\n");
                         }
                     }
                     else if (c == Create) {
@@ -385,34 +424,26 @@ int main()
                         if(word_count == 1){
                             // Session ID
                             // send/receive packets
-                            struct Message* sending = (Message *)malloc(sizeof(Message));
-                            
-                            strcpy(sending->source, username);
-                            strcpy (sending->data, word);
-                            sending->data[strlen(word) -1] = '\0';
-                            sending->size = strlen(sending->data);
-                            sending->type = NEW_SESS;
-                            char* sending_string = packet_to_string(sending);
-
-                            write(sockfd, sending_string, strlen(sending_string));
-
+                            if(word[strlen(word) -1] == '\n')
+                                word[strlen(word) -1] = '\0';
+                            text_message_from_source(sockfd, NEW_SESS, word, username);
          
                             Message * received = popControlList();
                             if (received->type == NS_ACK) { 
-                                printf ("new session created\n");
-                                printf ("session ID: %s\n", word);
+                                printw ("new session created\n");
+                                printw ("session ID: %s\n", word);
                             } 
                             else if (received->type == NS_NACK) { 
-                                printf ("session already exists\n");
+                                printw ("session already exists\n");
                             } 
                             // create with sess id word
                         }
                         else {
-                            printf("Invalid Arguments\n");
+                            printw("Invalid Arguments\n");
                         }
                     }
                     else {
-                        printf("Invalid Arguments\n");
+                        printw("Invalid Arguments\n");
                     }
                 }
             }
@@ -426,37 +457,33 @@ int main()
         
         if (text){
             if(loged_in){
-                struct Message* sending = (Message *)malloc(sizeof(Message));
-                strncpy (sending->data, command, strlen(command) - 1);
-                strcpy (sending->source, username);
-                sending->size = strlen(sending->data);
-                
-                sending->type = MESSAGE;
-                char* sending_string = packet_to_string(sending);
-                write(sockfd, sending_string, strlen(sending_string)); 
+                if(command[strlen(command) -1] == '\n')
+                    command[strlen(command) -1] = '\0';
+                text_message_from_source(sockfd, MESSAGE, command, username);
+         
             }else {
-                printf("Login first!\n");
+                printw("Login first!\n");
                 break;
             }
         }
         else if(c == Login){
             if(loged_in){
-                printf("Logout first!\n");
+                printw("Logout first!\n");
                 continue;
             }
                 
             if(word_count != 5){
-                printf("Invalid Arguments!\n");
+                printw("Invalid Arguments!\n");
                 continue;
             }
             // socket create and varification 
             sockfd = socket(AF_INET, SOCK_STREAM, 0); 
             if (sockfd == -1) { 
-                    printf("Socket Creation Failed!\n"); 
+                    printw("Socket Creation Failed!\n"); 
                     continue;
             } 
             else
-                    printf("Socket successfully created\n"); 
+                    printw("Socket successfully created\n"); 
 
             pthread_create(&receiver_thread, NULL, message_receiver, &sockfd);
             bzero(&servaddr, sizeof(servaddr)); 
@@ -468,7 +495,7 @@ int main()
 
             // connect the client socket to server socket 
             if (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0) { 
-                printf("Server Connection Failed!\n"); 
+                printw("Server Connection Failed!\n"); 
                 close(sockfd);
 
                 pthread_kill(receiver_thread, SIG_ABRT);
@@ -476,19 +503,10 @@ int main()
             } 
             else{
                 forceLogout = false;
-                printf("Connected!\n"); 
+                printw("Connected!\n"); 
             }
             // send/receive packets
-            struct Message* sending = (Message *)malloc(sizeof(Message));
-
-            strcpy (sending->data, login_args[1]);
-            strcpy (sending->source, login_args[0]);
-            
-            sending->size = strlen(sending->data);
-            sending->type = LOGIN;
-            char* sending_string = packet_to_string(sending);
-            
-            write(sockfd, sending_string, strlen(sending_string));
+            text_message_from_source(sockfd, LOGIN, login_args[1], login_args[0]);
             
             // wait for lo_ack or lo_nack
 
@@ -506,7 +524,7 @@ int main()
             } 
             else if(received->type == LO_NAK){
                 loged_in = false;
-                printf ("login failed, try again\n");
+                printw ("login failed, try again\n");
                 continue;
             }
         } 
@@ -517,6 +535,9 @@ int main()
 
     // close the socket 
     close(sockfd); 
+    
+    
+    endwin();
 } 
 
 
